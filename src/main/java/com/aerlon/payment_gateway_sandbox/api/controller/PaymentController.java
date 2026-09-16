@@ -92,4 +92,16 @@ public class PaymentController {
     public ResponseEntity<PaymentResponse> cancel(@PathVariable UUID id) {
         return ResponseEntity.ok(paymentService.cancel(id));
     }
+
+    @PostMapping("/{id}/refund")
+    @Operation(summary = "Estorna um pagamento capturado (total ou parcial)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Pagamento estornado"),
+            @ApiResponse(responseCode = "400", description = "Regra de negócio violada"),
+            @ApiResponse(responseCode = "404", description = "Pagamento não encontrado"),
+            @ApiResponse(responseCode = "409", description = "Estado invalido para estorno")
+    })
+    public ResponseEntity<PaymentResponse> refund(@PathVariable UUID id, @Valid @RequestBody RefundRequest request) {
+        return ResponseEntity.ok(paymentService.refund(id, request));
+    }
 }
