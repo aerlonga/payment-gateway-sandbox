@@ -2,6 +2,8 @@ package com.aerlon.payment_gateway_sandbox.application.service;
 
 import java.time.Instant;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -12,13 +14,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.aerlon.payment_gateway_sandbox.api.dto.CreatePaymentRequest;
+import com.aerlon.payment_gateway_sandbox.api.dto.PaymentEventResponse;
 import com.aerlon.payment_gateway_sandbox.api.dto.PaymentResponse;
+import com.aerlon.payment_gateway_sandbox.api.dto.RefundRequest;
 import com.aerlon.payment_gateway_sandbox.application.mapper.PaymentMapper;
 import com.aerlon.payment_gateway_sandbox.domain.entities.Payment;
+import com.aerlon.payment_gateway_sandbox.domain.entities.PaymentEvent;
+import com.aerlon.payment_gateway_sandbox.domain.enums.EventPublishStatus;
+import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentEventType;
 import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentStatus;
 import com.aerlon.payment_gateway_sandbox.domain.exception.IdempotencyConflictException;
 import com.aerlon.payment_gateway_sandbox.domain.exception.InvalidPaymentStateException;
+import com.aerlon.payment_gateway_sandbox.domain.exception.InvalidRefundException;
 import com.aerlon.payment_gateway_sandbox.domain.exception.PaymentNotFoundException;
+import com.aerlon.payment_gateway_sandbox.infrastructure.persistence.PaymentEventRepository;
 import com.aerlon.payment_gateway_sandbox.infrastructure.persistence.PaymentRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -39,6 +48,7 @@ public class PaymentService {
             PaymentStatus.CANCELED, EnumSet.noneOf(PaymentStatus.class));
 
     private final PaymentRepository paymentRepository;
+    private final PaymentEventRepository paymentEventRepository;
     private final PaymentMapper paymentMapper;
 
     /**
@@ -58,6 +68,7 @@ public class PaymentService {
         }
 
         Payment saved = paymentRepository.save(paymentMapper.toEntity(request, idempotencyKey));
+        recordEvent(saved, PaymentEventType.CREATED, Map.of());
         log.info("Pagamento criado id={} customer={} amount={} {}",
                 saved.getId(), saved.getCustomerId(), saved.getAmount(), saved.getCurrency());
         return CreatePaymentResult.created(paymentMapper.toResponse(saved));
@@ -79,11 +90,48 @@ public class PaymentService {
     /** Aplica uma transicao de status, validando a maquina de estados. */
     @Transactional
     public PaymentResponse changeStatus(UUID id, PaymentStatus newStatus, String providerPaymentId) {
-        Payment payment = getOrThrow(id);
-        PaymentStatus current = payment.getStatus();
+        return paymentMapper.toResponse(transition(getOrThrow(id), newStatus, providerPaymentId, Map.of()));
+    }
 
+    @Transactional(readOnly = true)
+    public List<PaymentEventResponse> history(UUID id) {
+        if (!paymentRepository.existsById(id)) {
+            throw new PaymentNotFoundException(id);
+        }
+        return paymentEventRepository.findByPaymentIdOrderByCreatedAtAsc(id).stream()
+                .map(paymentMapper::toEventResponse)
+                .toList();
+    }
+
+    @Transactional
+    public PaymentResponse cancel(UUID id) {
+        return changeStatus(id, PaymentStatus.CANCELED, null);
+    }
+
+    /**
+     * Estorna um pagamento capturado. amount nulo = estorno total. O valor nao
+     * pode exceder o capturado. Ainda nao ha controle de saldo estornado:
+     * qualquer estorno leva o pagamento a REFUNDED.
+     */
+    @Transactional
+    public PaymentResponse refund(UUID id, RefundRequest request) {
+        Payment payment = getOrThrow(id);
+        if (request.amount() != null && request.amount() > payment.getAmount()) {
+            throw new InvalidRefundException("Valor do estorno (" + request.amount()
+                    + ") excede o valor capturado (" + payment.getAmount() + ")");
+        }
+
+        Map<String, Object> extra = new LinkedHashMap<>();
+        extra.put("refundedAmount", request.amount() != null ? request.amount() : payment.getAmount());
+        extra.put("reason", request.reason());
+        return paymentMapper.toResponse(transition(payment, PaymentStatus.REFUNDED, null, extra));
+    }
+
+    private Payment transition(Payment payment, PaymentStatus newStatus, String providerPaymentId,
+            Map<String, Object> extraPayload) {
+        PaymentStatus current = payment.getStatus();
         if (current == newStatus) {
-            return paymentMapper.toResponse(payment);
+            return payment;
         }
         if (!ALLOWED_TRANSITIONS.getOrDefault(current, EnumSet.noneOf(PaymentStatus.class)).contains(newStatus)) {
             throw new InvalidPaymentStateException(current, newStatus);
@@ -94,13 +142,30 @@ public class PaymentService {
         if (providerPaymentId != null) {
             payment.setProviderPaymentId(providerPaymentId);
         }
-        log.info("Pagamento id={} {} -> {}", id, current, newStatus);
-        return paymentMapper.toResponse(payment);
+
+        Map<String, Object> payload = new LinkedHashMap<>(extraPayload);
+        payload.put("from", current.name());
+        recordEvent(payment, PaymentEventType.forStatus(newStatus), payload);
+        log.info("Pagamento id={} {} -> {}", payment.getId(), current, newStatus);
+        return payment;
     }
 
-    @Transactional
-    public PaymentResponse cancel(UUID id) {
-        return changeStatus(id, PaymentStatus.CANCELED, null);
+    /** Grava o evento na mesma transacao da mudanca (base do outbox). */
+    private void recordEvent(Payment payment, PaymentEventType type, Map<String, Object> extra) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("paymentId", payment.getId().toString());
+        payload.put("status", payment.getStatus().name());
+        payload.put("amount", payment.getAmount());
+        payload.put("currency", payment.getCurrency());
+        payload.put("occurredAt", Instant.now().toString());
+        payload.putAll(extra);
+
+        paymentEventRepository.save(PaymentEvent.builder()
+                .paymentId(payment.getId())
+                .eventType(type.value())
+                .payload(payload)
+                .status(EventPublishStatus.PENDING_PUBLISH)
+                .build());
     }
 
     private Payment getOrThrow(UUID id) {

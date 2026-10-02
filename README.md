@@ -396,3 +396,67 @@ payment-gateway-sandbox/
 - **Teste de carga:** k6
 - **Testes:** JUnit 5, Testcontainers (Postgres + Kafka em container nos testes de integração)
 - **Deploy:** Docker, AWS (EC2, RDS)
+
+---
+
+## 12. Como rodar e testar localmente
+
+### 12.1 Subir a infraestrutura
+
+```bash
+docker compose up -d     # Postgres 16 + Kafka
+docker ps                # esperar o Postgres ficar "healthy"
+```
+
+### 12.2 Subir a aplicação
+
+```bash
+./mvnw spring-boot:run
+```
+
+As migrations Flyway (`src/main/resources/db/migration`) rodam automaticamente no start. Variáveis aceitas (com default local): `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`.
+
+### 12.3 Swagger UI
+
+| Recurso | URL |
+|---|---|
+| Swagger UI (testar as rotas no navegador) | http://localhost:8080/swagger-ui.html |
+| OpenAPI JSON | http://localhost:8080/v3/api-docs |
+
+Em `POST /api/v1/payments`, preencher o header `Idempotency-Key` com qualquer string única (ex.: `teste-001`).
+
+> **Atenção ao prefixo:** nas seções 4.x os paths aparecem como `/api/payments`; a implementação usa **`/api/v1/payments`**.
+
+### 12.4 Fluxo de teste sugerido
+
+1. `POST /api/v1/payments` → cria pagamento (`PENDING`), copie o `id`.
+2. Repetir com a mesma `Idempotency-Key` → `200` com o mesmo pagamento (replay).
+3. `GET /api/v1/payments/{id}/history` → evento `payment.created`.
+4. `POST /api/v1/payments/{id}/cancel` → `CANCELED` + evento `payment.canceled`.
+5. Para testar estorno ainda não existe endpoint de captura (vem do webhook, v2). Forçar o status direto no banco:
+   ```bash
+   docker exec payment-gateway-postgres psql -U postgres -d payment_gateway \
+     -c "update payments set status='CAPTURED' where id='<id>'"
+   ```
+   e então `POST /api/v1/payments/{id}/refund` com `{"amount": 5000, "reason": "teste"}`.
+
+---
+
+## 13. Status de implementação
+
+| Item | Status |
+|---|---|
+| 4.1 `POST /payments` (idempotente) | ✅ |
+| 4.2 `GET /payments/{id}` | ✅ |
+| 4.3 `GET /payments` (filtro + paginação) | ✅ |
+| 4.4 `POST /payments/{id}/refund` | ✅ parcial: valida estado e valor, grava evento; sem Stripe e sem controle de saldo estornado (qualquer estorno vira `REFUNDED`) |
+| 4.5 `POST /payments/{id}/cancel` | ✅ |
+| 4.6 `GET /payments/{id}/history` | ✅ |
+| `PaymentEvent` gravado a cada mudança de estado (`PENDING_PUBLISH`) | ✅ |
+| Swagger / OpenAPI | ✅ |
+| Cliente Stripe (`PaymentIntent`, `Refund`) | ⏳ |
+| 4.7 Webhook Stripe + `ProcessedWebhookEvent` | ⏳ (tabela criada, sem código) |
+| Kafka (producer, consumer, poller do outbox) | ⏳ |
+| Resilience4j | ⏳ (só dependência) |
+| Testes automatizados / k6 | ⏳ |
+| Deploy AWS | ⏳ |
