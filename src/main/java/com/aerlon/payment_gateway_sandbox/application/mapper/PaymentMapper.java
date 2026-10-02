@@ -3,8 +3,10 @@ package com.aerlon.payment_gateway_sandbox.application.mapper;
 import org.springframework.stereotype.Component;
 
 import com.aerlon.payment_gateway_sandbox.api.dto.CreatePaymentRequest;
+import com.aerlon.payment_gateway_sandbox.api.dto.PaymentEventResponse;
 import com.aerlon.payment_gateway_sandbox.api.dto.PaymentResponse;
 import com.aerlon.payment_gateway_sandbox.domain.entities.Payment;
+import com.aerlon.payment_gateway_sandbox.domain.entities.PaymentEvent;
 import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentStatus;
 
 @Component
@@ -34,5 +36,15 @@ public class PaymentMapper {
                 payment.getProviderPaymentId(),
                 payment.getCreatedAt(),
                 payment.getUpdatedAt());
+    }
+
+    public PaymentEventResponse toEventResponse(PaymentEvent event) {
+        return new PaymentEventResponse(
+                event.getId(),
+                event.getPaymentId(),
+                event.getEventType(),
+                event.getPayload(),
+                event.getStatus(),
+                event.getCreatedAt());
     }
 }

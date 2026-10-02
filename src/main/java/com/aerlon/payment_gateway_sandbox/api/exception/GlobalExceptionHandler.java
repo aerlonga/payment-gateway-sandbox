@@ -18,6 +18,7 @@ import org.springframework.web.context.request.WebRequest;
 import com.aerlon.payment_gateway_sandbox.api.dto.ApiErrorResponse;
 import com.aerlon.payment_gateway_sandbox.domain.exception.IdempotencyConflictException;
 import com.aerlon.payment_gateway_sandbox.domain.exception.InvalidPaymentStateException;
+import com.aerlon.payment_gateway_sandbox.domain.exception.InvalidRefundException;
 import com.aerlon.payment_gateway_sandbox.domain.exception.PaymentNotFoundException;
 
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +35,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({ InvalidPaymentStateException.class, IdempotencyConflictException.class })
     public ResponseEntity<ApiErrorResponse> handleConflict(RuntimeException ex, WebRequest request) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(InvalidRefundException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidRefund(InvalidRefundException ex, WebRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -1,6 +1,7 @@
 package com.aerlon.payment_gateway_sandbox.api.controller;
 
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -19,7 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.aerlon.payment_gateway_sandbox.api.dto.CreatePaymentRequest;
+import com.aerlon.payment_gateway_sandbox.api.dto.PaymentEventResponse;
 import com.aerlon.payment_gateway_sandbox.api.dto.PaymentResponse;
+import com.aerlon.payment_gateway_sandbox.api.dto.RefundRequest;
 import com.aerlon.payment_gateway_sandbox.application.service.CreatePaymentResult;
 import com.aerlon.payment_gateway_sandbox.application.service.PaymentService;
 import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentStatus;
@@ -103,5 +106,15 @@ public class PaymentController {
     })
     public ResponseEntity<PaymentResponse> refund(@PathVariable UUID id, @Valid @RequestBody RefundRequest request) {
         return ResponseEntity.ok(paymentService.refund(id, request));
+    }
+
+    @GetMapping("/{id}/history")
+    @Operation(summary = "Historico de eventos (auditoria) de um pagamento")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Eventos ordenados por created_at"),
+            @ApiResponse(responseCode = "404", description = "Pagamento nao encontrado")
+    })
+    public ResponseEntity<List<PaymentEventResponse>> history(@PathVariable UUID id) {
+        return ResponseEntity.ok(paymentService.history(id));
     }
 }
