@@ -27,6 +27,7 @@ import com.aerlon.payment_gateway_sandbox.application.service.CreatePaymentResul
 import com.aerlon.payment_gateway_sandbox.application.service.PaymentService;
 import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentStatus;
 
+import org.springdoc.core.annotations.ParameterObject;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -80,7 +81,7 @@ public class PaymentController {
     public ResponseEntity<Page<PaymentResponse>> listByCustomer(
             @RequestParam UUID customerId,
             @RequestParam(required = false) PaymentStatus status,
-            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+            @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
 
         return ResponseEntity.ok(paymentService.listByCustomer(customerId, status, pageable));
     }
