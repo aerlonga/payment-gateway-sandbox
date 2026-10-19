@@ -13,13 +13,13 @@ import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentStatus;
 public class PaymentMapper {
 
     /** DTO de entrada -> entidade nova (sempre nasce PENDING). */
-    public Payment toEntity(CreatePaymentRequest request, String idempotencyKey) {
+    public Payment toEntity(CreatePaymentRequest request, String idempotencyKey, String provider) {
         return Payment.builder()
                 .customerId(request.customerId())
                 .amount(request.amount())
                 .currency(request.currency().toUpperCase())
                 .status(PaymentStatus.PENDING)
-                .provider(request.provider())
+                .provider(provider)
                 .idempotencyKey(idempotencyKey)
                 .build();
     }

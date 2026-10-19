@@ -3,7 +3,6 @@ package com.aerlon.payment_gateway_sandbox.api.dto;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentProvider;
 import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentStatus;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -15,7 +14,7 @@ public record PaymentResponse(
         Long amount,
         String currency,
         PaymentStatus status,
-        PaymentProvider provider,
+        String provider,
         String providerPaymentId,
         Instant createdAt,
         Instant updatedAt) {

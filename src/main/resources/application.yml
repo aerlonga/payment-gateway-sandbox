@@ -14,3 +14,9 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+payment:
+  provider: ${PAYMENT_PROVIDER:fake}   # fake | stripe (stripe ainda nao implementado)
+  fake:
+    latency-ms-min: ${FAKE_LATENCY_MS_MIN:0}
+    latency-ms-max: ${FAKE_LATENCY_MS_MAX:0}
+    failure-rate: ${FAKE_FAILURE_RATE:0}
