@@ -16,18 +16,18 @@ import com.aerlon.payment_gateway_sandbox.application.port.CreatePaymentCommand;
 import com.aerlon.payment_gateway_sandbox.application.port.ProviderPayment;
 import com.aerlon.payment_gateway_sandbox.application.port.ProviderRefund;
 import com.aerlon.payment_gateway_sandbox.application.port.RefundCommand;
+import com.aerlon.payment_gateway_sandbox.config.PaymentProviderConfig;
 import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentStatus;
 import com.aerlon.payment_gateway_sandbox.domain.exception.PaymentProviderException;
 import com.stripe.StripeClient;
 import com.stripe.exception.ApiConnectionException;
+import com.stripe.exception.CardException;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.Refund;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.PaymentIntentCreateParams;
 import com.stripe.service.PaymentIntentService;
 import com.stripe.service.RefundService;
-
-import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 
 class StripePaymentProviderTest {
 
@@ -49,7 +49,7 @@ class StripePaymentProviderTest {
 
     private StripePaymentProvider provider(String paymentMethod) {
         return new StripePaymentProvider(client, new StripeProperties("sk_test_x", paymentMethod, 1000, 1000, 0),
-                CircuitBreaker.ofDefaults("stripe-test"));
+                PaymentProviderConfig.stripeCircuitBreaker());
     }
 
     private static PaymentIntent intent(String id, String status) {
@@ -86,7 +86,7 @@ class StripePaymentProviderTest {
         assertThat(params.getValue().getAmount()).isEqualTo(15000L);
         assertThat(params.getValue().getCurrency()).isEqualTo("brl");
         assertThat(params.getValue().getConfirm()).isNull();
-        assertThat(options.getValue().getIdempotencyKey()).isEqualTo("key-1");
+        assertThat(options.getValue().getIdempotencyKey()).endsWith(":key-1");
     }
 
     @Test
@@ -123,5 +123,29 @@ class StripePaymentProviderTest {
 
         assertThat(result.providerRefundId()).isEqualTo("re_1");
         assertThat(result.amount()).isEqualTo(5000);
+    }
+
+    @Test
+    void cardDeclineBecomesFailedAndDoesNotCountAsBreakerFailure() throws Exception {
+        when(intents.create(any(PaymentIntentCreateParams.class), any(RequestOptions.class)))
+                .thenThrow(new CardException("recusado", "req_1", "card_declined", null, "card_declined", null, 402, null));
+        var breaker = PaymentProviderConfig.stripeCircuitBreaker();
+        var provider = new StripePaymentProvider(client,
+                new StripeProperties("sk_test_x", "", 1000, 1000, 0), breaker);
+
+        assertThat(provider.createPayment(COMMAND).status()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(breaker.getMetrics().getNumberOfFailedCalls()).isZero();
+    }
+
+    @Test
+    void idempotencyKeyIsScopedByCustomer() throws Exception {
+        PaymentIntent created = intent("pi_3", "requires_payment_method");
+        when(intents.create(any(PaymentIntentCreateParams.class), any(RequestOptions.class))).thenReturn(created);
+
+        provider("").createPayment(COMMAND);
+
+        ArgumentCaptor<RequestOptions> options = ArgumentCaptor.forClass(RequestOptions.class);
+        org.mockito.Mockito.verify(intents).create(any(PaymentIntentCreateParams.class), options.capture());
+        assertThat(options.getValue().getIdempotencyKey()).isEqualTo(COMMAND.customerId() + ":key-1");
     }
 }

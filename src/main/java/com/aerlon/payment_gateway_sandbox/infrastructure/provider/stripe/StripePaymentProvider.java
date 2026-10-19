@@ -44,7 +44,9 @@ public class StripePaymentProvider implements PaymentProvider {
         PaymentIntentCreateParams.Builder params = PaymentIntentCreateParams.builder()
                 .setAmount(command.amount())
                 .setCurrency(command.currency().toLowerCase(Locale.ROOT))
-                .putMetadata("paymentId", command.paymentId().toString())
+                // Apenas valores deterministas por Idempotency-Key: o Stripe rejeita a mesma chave
+                // com parametros diferentes (o paymentId muda a cada tentativa).
+                .putMetadata("idempotencyKey", command.idempotencyKey())
                 .putMetadata("customerId", command.customerId().toString());
 
         if (hasText(properties.paymentMethod())) {
@@ -60,7 +62,9 @@ public class StripePaymentProvider implements PaymentProvider {
                     .build());
         }
 
-        RequestOptions options = RequestOptions.builder().setIdempotencyKey(command.idempotencyKey()).build();
+        RequestOptions options = RequestOptions.builder()
+                .setIdempotencyKey(command.customerId() + ":" + command.idempotencyKey())
+                .build();
         try {
             PaymentIntent intent = call(() -> client.paymentIntents().create(params.build(), options));
             return toProviderPayment(intent);

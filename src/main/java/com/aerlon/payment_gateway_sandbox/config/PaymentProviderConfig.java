@@ -12,8 +12,10 @@ import com.aerlon.payment_gateway_sandbox.infrastructure.provider.stripe.StripeP
 import com.aerlon.payment_gateway_sandbox.infrastructure.provider.stripe.StripeProperties;
 
 import com.stripe.StripeClient;
+import com.stripe.exception.CardException;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 
 /** Escolhe o provider ativo por {@code payment.provider} (fake | stripe). */
 @Configuration
@@ -38,6 +40,13 @@ public class PaymentProviderConfig {
                 .setReadTimeout(properties.readTimeoutMs())
                 .setMaxNetworkRetries(properties.maxNetworkRetries())
                 .build();
-        return new StripePaymentProvider(client, properties, CircuitBreaker.ofDefaults("stripe"));
+        return new StripePaymentProvider(client, properties, stripeCircuitBreaker());
+    }
+
+    /** Recusa de cartao e resultado de negocio: nao pode contar como falha do Stripe. */
+    public static CircuitBreaker stripeCircuitBreaker() {
+        return CircuitBreaker.of("stripe", CircuitBreakerConfig.custom()
+                .ignoreExceptions(CardException.class)
+                .build());
     }
 }
