@@ -570,5 +570,6 @@ Em `POST /api/v1/payments`, preencher o header `Idempotency-Key` com qualquer st
 | 4.7 Webhook Stripe + `ProcessedWebhookEvent` | ⏳ (tabela criada, sem código) |
 | Kafka (producer, consumer, poller do outbox) | ⏳ |
 | Resilience4j | ✅ parcial: circuit breaker (config default) no Stripe; sem retry/time limiter próprios (o SDK faz retry de rede) |
-| Testes automatizados / k6 | ⏳ (só `contextLoads`) |
+| Testes automatizados | ✅ unitários (service, providers), contrato do controller (MockMvc) e integração do controller + corrida de idempotência (Postgres via Testcontainers); `contextLoads` com Kafka ainda falha |
+| Teste de carga k6 | ⏳ |
 | Deploy AWS | ⏳ |

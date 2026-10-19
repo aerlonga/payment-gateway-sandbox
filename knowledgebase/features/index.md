@@ -11,10 +11,9 @@ Contexto de cada entrega (o que mudou, por que, como validar, pendencias). Use [
 | [004](004-stripe-provider.md) | `StripePaymentProvider` com circuit breaker | feature | implementado |
 | [005](005-idempotencia-concorrente.md) | Idempotencia sob concorrencia | fix | implementado |
 | [006](006-client-secret-e-campos-do-request.md) | `clientSecret` na resposta e `paymentMethod`/`description` no request | feature | implementado |
+| [007](007-teste-integracao-controller.md) | Teste de integracao do controller (contexto completo + Postgres) | chore | implementado |
 
 ## Planejado (ainda sem documento de feature)
-
-Fechar a v1: teste de integracao do controller com o contexto completo (hoje ha teste de contrato com MockMvc standalone e service mockado).
 
 Roadmap (README secao 10): v2 webhook do Stripe publicando no Kafka + consumer idempotente (`processed_webhook_events`); v3 outbox (poller de `payment_events` `PENDING_PUBLISH`); v4 teste de carga k6 documentado; v5 deploy AWS; v6 opcional (segundo provider, split, recorrencia).
 
