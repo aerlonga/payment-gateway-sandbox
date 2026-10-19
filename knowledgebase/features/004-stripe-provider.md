@@ -40,7 +40,6 @@ README 2.1 e 6. Revisao automatica de seguranca apontou dois pontos, corrigidos:
 
 ## Pendencias
 
-- `clientSecret` ainda nao exposto no `PaymentResponse`.
 - Timeout do Stripe vira 502 com rollback, mas o Stripe pode ter processado: reconciliar com o webhook (ADR-006).
 - Circuit breaker com configuracao default; sem retry/time limiter proprios de Resilience4j.
 - Recusa de cartao (`CardException`) coberta por teste unitario, ainda nao exercitada no sandbox.

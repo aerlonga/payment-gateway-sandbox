@@ -28,13 +28,13 @@ Pacote base: `com.aerlon.payment_gateway_sandbox`.
 | Adapters de provider | `infrastructure/provider/fake`, `infrastructure/provider/stripe` |
 | Selecao do provider | `config/PaymentProviderConfig` (`@ConditionalOnProperty payment.provider`) |
 | Swagger | `config/OpenApiConfig` |
-| Migrations | `src/main/resources/db/migration` (V1..V4) |
+| Migrations | `src/main/resources/db/migration` (V1..V5) |
 
 ## Endpoints (prefixo `/api/v1/payments`)
 
 | Metodo | Rota | Respostas |
 |---|---|---|
-| POST | `/` (header `Idempotency-Key`) | 201 criado, 200 replay, 400, 409 chave com payload diferente, 502 provider |
+| POST | `/` (header `Idempotency-Key`; body com `paymentMethod` e `description` opcionais) | 201 criado (com `clientSecret`), 200 replay, 400, 409 chave com payload diferente, 502 provider |
 | GET | `/{id}` | 200, 404 |
 | GET | `/?customerId=&status=&page=&size=&sort=` | 200 paginado (lista vazia e 200, nao 404) |
 | POST | `/{id}/cancel` | 200, 404, 409 |
@@ -63,7 +63,7 @@ Transicoes validadas em `PaymentService.ALLOWED_TRANSITIONS`. `FAILED`, `REFUNDE
 
 | Tabela | Guarda |
 |---|---|
-| `payments` | `id`, `customer_id` (referencia solta, sem tabela de cliente), `amount` (centavos), `currency`, `status`, `provider` ("fake"/"stripe"), `provider_payment_id`, `refunded_amount`, `idempotency_key` (`UNIQUE`), timestamps. `CHECK (0 <= refunded_amount <= amount)` |
+| `payments` | `id`, `customer_id` (referencia solta, sem tabela de cliente), `amount` (centavos), `currency`, `status`, `provider` ("fake"/"stripe"), `provider_payment_id`, `payment_method` e `description` (opcionais, do request), `refunded_amount`, `idempotency_key` (`UNIQUE`), timestamps. `CHECK (0 <= refunded_amount <= amount)` |
 | `payment_events` | auditoria + outbox: `event_type` (`payment.created/authorized/confirmed/failed/canceled/refunded`), `payload` JSONB, `status` (`PENDING_PUBLISH`/`PUBLISHED`/`FAILED`) |
 | `processed_webhook_events` | idempotencia do webhook (`stripe_event_id` `UNIQUE`); tabela criada, **sem codigo ainda** |
 

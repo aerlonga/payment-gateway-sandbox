@@ -32,7 +32,7 @@ Documentacao versionada de referencia:
 Cliente (Swagger / Postman / k6)
     -> PaymentController (/api/v1/payments)
     -> PaymentService
-         -> Postgres (payments, payment_events)       [Flyway V1..V4]
+         -> Postgres (payments, payment_events)       [Flyway V1..V5]
          -> PaymentProvider (porta)
               -> FakePaymentProvider    (default; carga e testes)
               -> StripePaymentProvider  (sandbox; circuit breaker)

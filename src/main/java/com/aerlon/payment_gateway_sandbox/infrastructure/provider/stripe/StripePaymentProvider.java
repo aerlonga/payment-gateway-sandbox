@@ -49,14 +49,24 @@ public class StripePaymentProvider implements PaymentProvider {
                 .putMetadata("idempotencyKey", command.idempotencyKey())
                 .putMetadata("customerId", command.customerId().toString());
 
+        if (hasText(command.description())) {
+            params.setDescription(command.description());
+        }
+
+        // Tipo de meio pedido pelo cliente e excludente com automatic_payment_methods.
+        boolean explicitType = hasText(command.paymentMethod());
+        if (explicitType) {
+            params.addPaymentMethodType(command.paymentMethod());
+        }
         if (hasText(properties.paymentMethod())) {
-            params.setPaymentMethod(properties.paymentMethod())
-                    .setConfirm(true)
-                    .setAutomaticPaymentMethods(PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
-                            .setEnabled(true)
-                            .setAllowRedirects(PaymentIntentCreateParams.AutomaticPaymentMethods.AllowRedirects.NEVER)
-                            .build());
-        } else {
+            params.setPaymentMethod(properties.paymentMethod()).setConfirm(true);
+            if (!explicitType) {
+                params.setAutomaticPaymentMethods(PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
+                        .setEnabled(true)
+                        .setAllowRedirects(PaymentIntentCreateParams.AutomaticPaymentMethods.AllowRedirects.NEVER)
+                        .build());
+            }
+        } else if (!explicitType) {
             params.setAutomaticPaymentMethods(PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
                     .setEnabled(true)
                     .build());

@@ -7,5 +7,7 @@ public record CreatePaymentCommand(
         UUID customerId,
         long amount,
         String currency,
-        String idempotencyKey) {
+        String idempotencyKey,
+        String paymentMethod,
+        String description) {
 }

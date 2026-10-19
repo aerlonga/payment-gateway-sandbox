@@ -556,7 +556,7 @@ Em `POST /api/v1/payments`, preencher o header `Idempotency-Key` com qualquer st
 
 | Item | Status |
 |---|---|
-| 4.1 `POST /payments` (idempotente) | ✅ parcial: idempotente também sob concorrência (insert com flush antes do provider; a perdedora da corrida vira replay ou 409; coberto por teste com Postgres real); chama o provider ativo; sem `clientSecret` na resposta; request sem `paymentMethod`/`description` (e sem o campo `provider`, que agora vem da config) |
+| 4.1 `POST /payments` (idempotente) | ✅ parcial: idempotente também sob concorrência (insert com flush antes do provider; a perdedora da corrida vira replay ou 409; coberto por teste com Postgres real); chama o provider ativo; `clientSecret` na resposta da criacao (e no replay de pagamento `PENDING`); request com `paymentMethod` e `description` opcionais (o `provider` vem da config, nao do request) |
 | 4.2 `GET /payments/{id}` | ✅ |
 | 4.3 `GET /payments` (filtro + paginação) | ✅ filtro por `customerId`; filtro `status` e índice `(customer_id, status)` a confirmar |
 | 4.4 `POST /payments/{id}/refund` | ✅ estorno total e parcial: `refunded_amount` acumulado, valida contra o saldo restante, `CAPTURED` até estornar tudo, depois `REFUNDED`; lock pessimista contra estornos concorrentes |

@@ -20,6 +20,8 @@ public class PaymentMapper {
                 .currency(request.currency().toUpperCase())
                 .status(PaymentStatus.PENDING)
                 .provider(provider)
+                .paymentMethod(request.paymentMethod())
+                .description(request.description())
                 .idempotencyKey(idempotencyKey)
                 .build();
     }
@@ -35,8 +37,11 @@ public class PaymentMapper {
                 payment.getStatus(),
                 payment.getProvider(),
                 payment.getProviderPaymentId(),
+                payment.getPaymentMethod(),
+                payment.getDescription(),
                 payment.getCreatedAt(),
-                payment.getUpdatedAt());
+                payment.getUpdatedAt(),
+                null);
     }
 
     public PaymentEventResponse toEventResponse(PaymentEvent event) {

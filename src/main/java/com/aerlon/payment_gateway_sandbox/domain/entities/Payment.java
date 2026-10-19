@@ -50,6 +50,13 @@ public class Payment {
     @Column(name = "provider", nullable = false, length = 30)
     private String provider;
 
+    /** Tipo de meio de pagamento pedido pelo cliente (ex.: "card"); nulo = decisao do provider. */
+    @Column(name = "payment_method", length = 30)
+    private String paymentMethod;
+
+    @Column(name = "description", length = 255)
+    private String description;
+
     @Column(name = "provider_payment_id", length = 100)
     private String providerPaymentId;
 

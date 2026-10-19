@@ -5,6 +5,7 @@ import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -35,6 +36,7 @@ import com.aerlon.payment_gateway_sandbox.domain.exception.IdempotencyConflictEx
 import com.aerlon.payment_gateway_sandbox.domain.exception.InvalidPaymentStateException;
 import com.aerlon.payment_gateway_sandbox.domain.exception.InvalidRefundException;
 import com.aerlon.payment_gateway_sandbox.domain.exception.PaymentNotFoundException;
+import com.aerlon.payment_gateway_sandbox.domain.exception.PaymentProviderException;
 import com.aerlon.payment_gateway_sandbox.infrastructure.persistence.PaymentEventRepository;
 import com.aerlon.payment_gateway_sandbox.infrastructure.persistence.PaymentRepository;
 
@@ -101,7 +103,8 @@ public class PaymentService {
         recordEvent(saved, PaymentEventType.CREATED, Map.of());
 
         ProviderPayment charge = paymentProvider.createPayment(new CreatePaymentCommand(
-                saved.getId(), saved.getCustomerId(), saved.getAmount(), saved.getCurrency(), idempotencyKey));
+                saved.getId(), saved.getCustomerId(), saved.getAmount(), saved.getCurrency(), idempotencyKey,
+                saved.getPaymentMethod(), saved.getDescription()));
         if (charge.status() != PaymentStatus.PENDING) {
             transition(saved, charge.status(), charge.providerPaymentId(), Map.of());
         } else {
@@ -109,7 +112,8 @@ public class PaymentService {
         }
         log.info("Pagamento criado id={} customer={} amount={} {}",
                 saved.getId(), saved.getCustomerId(), saved.getAmount(), saved.getCurrency());
-        return CreatePaymentResult.created(paymentMapper.toResponse(saved));
+        // clientSecret nao e persistido: so existe na resposta da criacao (ADR-009)
+        return CreatePaymentResult.created(paymentMapper.toResponse(saved).withClientSecret(charge.clientSecret()));
     }
 
     private CreatePaymentResult replay(Payment payment, CreatePaymentRequest request, String idempotencyKey) {
@@ -117,7 +121,25 @@ public class PaymentService {
             throw new IdempotencyConflictException(idempotencyKey);
         }
         log.debug("Replay idempotente para key={} payment={}", idempotencyKey, payment.getId());
-        return CreatePaymentResult.replayed(paymentMapper.toResponse(payment));
+        return CreatePaymentResult.replayed(paymentMapper.toResponse(payment)
+                .withClientSecret(clientSecretForReplay(payment)));
+    }
+
+    /**
+     * Quem repete o POST de um pagamento ainda PENDING e quem perdeu a resposta da criacao e
+     * precisa do clientSecret para confirmar; busca-o no provider. Falha do provider nao
+     * derruba o replay: a resposta sai sem o segredo.
+     */
+    private String clientSecretForReplay(Payment payment) {
+        if (payment.getStatus() != PaymentStatus.PENDING || payment.getProviderPaymentId() == null) {
+            return null;
+        }
+        try {
+            return paymentProvider.getPayment(payment.getProviderPaymentId()).clientSecret();
+        } catch (PaymentProviderException e) {
+            log.warn("Replay sem clientSecret: provider indisponivel payment={}", payment.getId());
+            return null;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -255,6 +277,8 @@ public class PaymentService {
     private boolean matchesRequest(Payment payment, CreatePaymentRequest request) {
         return payment.getCustomerId().equals(request.customerId())
                 && payment.getAmount().equals(request.amount())
-                && payment.getCurrency().equalsIgnoreCase(request.currency());
+                && payment.getCurrency().equalsIgnoreCase(request.currency())
+                && Objects.equals(payment.getPaymentMethod(), request.paymentMethod())
+                && Objects.equals(payment.getDescription(), request.description());
     }
 }
