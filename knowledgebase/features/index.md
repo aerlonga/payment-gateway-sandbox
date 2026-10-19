@@ -12,9 +12,10 @@ Contexto de cada entrega (o que mudou, por que, como validar, pendencias). Use [
 | [005](005-idempotencia-concorrente.md) | Idempotencia sob concorrencia | fix | implementado |
 | [006](006-client-secret-e-campos-do-request.md) | `clientSecret` na resposta e `paymentMethod`/`description` no request | feature | implementado |
 | [007](007-teste-integracao-controller.md) | Teste de integracao do controller (contexto completo + Postgres) | chore | implementado |
+| [008](008-teste-de-carga-k6.md) | Teste de carga k6 (criacao, idempotencia, leitura) | feature | implementado |
 
 ## Planejado (ainda sem documento de feature)
 
-Roadmap (README secao 10): v2 webhook do Stripe publicando no Kafka + consumer idempotente (`processed_webhook_events`); v3 outbox (poller de `payment_events` `PENDING_PUBLISH`); v4 teste de carga k6 documentado; v5 deploy AWS; v6 opcional (segundo provider, split, recorrencia).
+Roadmap (README secao 10): v2 webhook do Stripe publicando no Kafka + consumer idempotente (`processed_webhook_events`); v3 outbox (poller de `payment_events` `PENDING_PUBLISH`); v4 restante: k6 de webhook em rajada; v5 deploy AWS; v6 opcional (segundo provider, split, recorrencia).
 
 Crie o documento da feature quando ela entrar em desenvolvimento e adicione a linha na tabela.

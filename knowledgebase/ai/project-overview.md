@@ -17,7 +17,7 @@ O projeto existe para demonstrar: modelagem de dominio financeiro, integracao co
 | Gateway | Stripe (`stripe-java`, sandbox) e `FakePaymentProvider` (teste de carga/automatizados) |
 | Resiliencia | Resilience4j (circuit breaker no Stripe) |
 | Testes | JUnit 5, Mockito, Testcontainers (Postgres) |
-| Teste de carga | k6 (planejado, v4) |
+| Teste de carga | k6 (`load-tests/k6/`, v4 parcial) |
 | Infra local | Docker Compose (postgres, kafka, app) |
 | Deploy alvo | AWS free tier (EC2 + RDS, Kafka em container) — planejado, v5 |
 
@@ -32,4 +32,4 @@ O projeto existe para demonstrar: modelagem de dominio financeiro, integracao co
 
 ## Estado atual (resumo)
 
-v1 em andamento: endpoints 4.1 a 4.6, `PaymentProvider` + Stripe + Fake, estorno parcial, idempotencia sob concorrencia. `clientSecret` na criacao e `paymentMethod`/`description` no request ja existem; faltam testes de integracao de controller com o contexto completo. Webhook, Kafka, k6 e deploy sao fases seguintes. Detalhe por item na secao 13 do README e em [[../features/index|Features]].
+v1 em andamento: endpoints 4.1 a 4.6, `PaymentProvider` + Stripe + Fake, estorno parcial, idempotencia sob concorrencia. `clientSecret` na criacao e `paymentMethod`/`description` no request ja existem; teste de integracao do controller e k6 (cenarios 1, 2 e 4) prontos. Webhook, Kafka, k6 de webhook e deploy sao fases seguintes. Detalhe por item na secao 13 do README e em [[../features/index|Features]].

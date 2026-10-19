@@ -363,15 +363,17 @@ A alternativa recomendada pelo Stripe é construir a integração com um mecanis
 ### 7.2 Como rodar
 
 ```bash
-# sobe a aplicação com o provider simulado
-SPRING_PROFILES_ACTIVE=loadtest \
-PAYMENT_PROVIDER=fake \
-STRIPE_WEBHOOK_SECRET=whsec_loadtest_local \
-./mvnw spring-boot:run
+# sobe a aplicação com o provider simulado (latência 200-400 ms, 2% de recusa)
+SPRING_PROFILES_ACTIVE=loadtest PAYMENT_PROVIDER=fake docker compose up -d --build app
 
-# executa um cenário
+# executa um cenário (k6 instalado)
 k6 run load-tests/k6/create-payment.js
+
+# ou sem instalar o k6
+docker run --rm --network host -v $PWD/load-tests/k6:/k6:ro grafana/k6 run /k6/create-payment.js
 ```
+
+Parâmetros por variável do k6 (`-e`): `BASE_URL`, `RATE`/`DURATION` (criação), `PARALLEL`/`ITERATIONS` (idempotência), `CUSTOMERS`/`PER_CUSTOMER`/`RATE`/`DURATION` (leitura). Depois do teste, volte ao provider do `.env` com `docker compose up -d --build app`.
 
 **Calibrando a latência do fake:** rode algumas dezenas de chamadas reais ao sandbox do Stripe (sem concorrência), meça o tempo de `PaymentIntent.create` visto pela sua aplicação e use a faixa (ex.: p50 e p95) em `latency-ms-min` / `latency-ms-max`. Documente os valores usados no README, para que os resultados sejam reproduzíveis.
 
@@ -402,6 +404,23 @@ k6 run load-tests/k6/create-payment.js
 **4. Leitura pesada**
 - `GET /api/payments?customerId=X` com grande volume de dados populado previamente (seed de dados).
 - Comparar latência com e sem índice composto `(customer_id, status)`.
+
+**Status dos cenários:** 1, 2 e 4 implementados em `load-tests/k6/` (`create-payment.js`, `idempotency-race.js`, `read-heavy.js`). O 3 (webhook em rajada) depende do endpoint de webhook e do Kafka (v2) e fica pendente.
+
+### 7.3.1 Resultados (execução local, Docker em WSL2, app com perfil `loadtest`)
+
+Pool Hikari padrão (10 conexões), Postgres e k6 na mesma máquina da aplicação, fake com latência 200-400 ms. Números de referência desta máquina, não de produção.
+
+| Cenário | Carga | Resultado |
+|---|---|---|
+| 1. Criação | 25 req/s por 1 min | 1501 req, 0% de erro, p95 468 ms, p99 926 ms |
+| 1. Criação (saturação) | 50 req/s por 30 s | satura em ~32 req/s; p95 8,5 s, 237 iterações descartadas |
+| 2. Idempotência | 200 iterações x 10 requisições paralelas com a mesma chave | 200 criações (exatamente um 201 por chave), 1800 replays 200, 0 duplicados, 0 ids divergentes, 0 erros |
+| 4. Leitura | 3000 pagamentos / 100 clientes, 200 iter/s por 1 min | 15001 req, 0% de erro; listagem p95 2,2 ms, busca por id p95 1,6 ms |
+
+**Leitura do cenário 1:** o teto de ~32 req/s é `pool de 10 conexões / ~0,3 s de latência do provider`. `PaymentService.create` chama o provider **dentro** da transação (ADR-006), então cada criação segura uma conexão durante a latência simulada. É o gargalo previsto no ADR-006; a opção intermediária descrita lá (gravar `PENDING`, fechar a transação, chamar o provider e aplicar o resultado em outra transação) é a evolução se o teto importar.
+
+**Limitações:** o cenário 4 roda com ~3 mil linhas, pequeno demais para diferenciar com e sem o índice `(customer_id, status)`; a comparação com/sem índice fica pendente (seed maior e `EXPLAIN`).
 
 ### 7.4 Métricas-alvo
 
@@ -571,5 +590,5 @@ Em `POST /api/v1/payments`, preencher o header `Idempotency-Key` com qualquer st
 | Kafka (producer, consumer, poller do outbox) | ⏳ |
 | Resilience4j | ✅ parcial: circuit breaker (config default) no Stripe; sem retry/time limiter próprios (o SDK faz retry de rede) |
 | Testes automatizados | ✅ unitários (service, providers), contrato do controller (MockMvc) e integração do controller + corrida de idempotência (Postgres via Testcontainers); `contextLoads` com Kafka ainda falha |
-| Teste de carga k6 | ⏳ |
+| Teste de carga k6 | ✅ parcial: cenários 1, 2 e 4 em `load-tests/k6/` com resultados na seção 7.3.1; webhook em rajada (3) depende da v2 |
 | Deploy AWS | ⏳ |

@@ -84,7 +84,7 @@ Mapeamento de status do `PaymentIntent`: `succeeded`->`CAPTURED`, `requires_capt
 
 - **Idempotencia:** `saveAndFlush` do pagamento antes de chamar o provider; a constraint `UNIQUE` decide quem cria; a perdedora tem a violacao capturada e relida fora da transacao abortada (ADR-003). `PaymentService.create` usa `TransactionTemplate`, nao `@Transactional`.
 - **Estorno:** `findByIdForUpdate` (lock pessimista) serializa estornos do mesmo pagamento (ADR-004).
-- Chamada ao provider ocorre **dentro** da transacao de criacao: segura uma conexao do pool durante a latencia do provider. Custo conhecido, a medir no k6 (ADR-006).
+- Chamada ao provider ocorre **dentro** da transacao de criacao: segura uma conexao do pool durante a latencia do provider. Custo medido no k6: teto de ~32 criacoes/s com pool de 10 e fake de 200-400 ms (README 7.3.1).
 
 ## Containers (`docker-compose.yml`)
 

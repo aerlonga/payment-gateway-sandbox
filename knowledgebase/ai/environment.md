@@ -25,9 +25,9 @@
 | `PAYMENT_PROVIDER` | `fake` (default) ou `stripe` |
 | `STRIPE_API_KEY` | chave **secreta** do sandbox (`sk_test_...`); obrigatoria com `PAYMENT_PROVIDER=stripe` (a app nao sobe sem ela). Nunca a publicavel. |
 | `STRIPE_TEST_PAYMENT_METHOD` | opcional, ex.: `pm_card_visa`: confirma e captura na criacao; vazio deixa o pagamento `PENDING` |
-| `FAKE_LATENCY_MS_MIN` / `FAKE_LATENCY_MS_MAX` / `FAKE_FAILURE_RATE` | fake provider (defaults 0/0/0); `application-loadtest.yml` usa 200/400/0.02 |
+| `FAKE_LATENCY_MS_MIN` / `FAKE_LATENCY_MS_MAX` / `FAKE_FAILURE_RATE` | fake provider (defaults 0/0/0); `application-loadtest.yml` usa 200/400/0.02; repassadas pelo compose |
 | `payment.stripe.connect-timeout-ms` / `read-timeout-ms` / `max-network-retries` | 5000 / 10000 / 2 (so em `application.yml`) |
-| `SPRING_PROFILES_ACTIVE=loadtest` | perfil do teste de carga (provider fake com latencia) |
+| `SPRING_PROFILES_ACTIVE=loadtest` | perfil do teste de carga (provider fake com latencia); repassado pelo compose |
 
 Fora do Docker, o Spring **nao le `.env` sozinho**: `set -a; source .env; set +a` antes de `./mvnw spring-boot:run`. O compose le o `.env` automaticamente; variavel exportada no shell tem precedencia sobre ele (ex.: `PAYMENT_PROVIDER=fake docker compose up -d app`).
 

@@ -23,6 +23,15 @@ Logs: `docker logs payment-gateway-app`. Banco: `docker exec -it payment-gateway
 
 Fluxo manual pelo Swagger/curl: ver `NOTAS.md` (criar, replay, history, cancel, refund). Com o fake o pagamento ja nasce `CAPTURED`; com `STRIPE_TEST_PAYMENT_METHOD=pm_card_visa` tambem. Sem ele, forcar `CAPTURED` no banco para testar estorno.
 
+## Teste de carga (k6)
+
+```bash
+SPRING_PROFILES_ACTIVE=loadtest PAYMENT_PROVIDER=fake docker compose up -d --build app
+docker run --rm --network host -v $PWD/load-tests/k6:/k6:ro grafana/k6 run /k6/create-payment.js
+```
+
+Scripts: `create-payment.js`, `idempotency-race.js`, `read-heavy.js` (parametros via `-e`, ver README 7.2). **Nunca contra `PAYMENT_PROVIDER=stripe`** (rate limit do sandbox). Depois, `docker compose up -d --build app` volta ao provider do `.env`. Acima da saturacao (~32 req/s) a app pode resetar conexoes; deixe-a drenar antes da proxima rodada.
+
 ## Trocar de provider
 
 Editar `PAYMENT_PROVIDER` no `.env` e recriar a app (`docker compose up -d --build app`). `fake` para carga e dev sem rede; `stripe` para integracao real no sandbox.
