@@ -13,6 +13,7 @@ public record PaymentResponse(
         UUID customerId,
         Long amount,
         String currency,
+        @Schema(description = "Total ja estornado, em centavos") Long refundedAmount,
         PaymentStatus status,
         String provider,
         String providerPaymentId,

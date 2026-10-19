@@ -31,6 +31,7 @@ public class PaymentMapper {
                 payment.getCustomerId(),
                 payment.getAmount(),
                 payment.getCurrency(),
+                payment.getRefundedAmount(),
                 payment.getStatus(),
                 payment.getProvider(),
                 payment.getProviderPaymentId(),

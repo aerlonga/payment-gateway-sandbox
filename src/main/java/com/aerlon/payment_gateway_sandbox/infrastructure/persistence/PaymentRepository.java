@@ -6,13 +6,23 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+
+import jakarta.persistence.LockModeType;
 
 import com.aerlon.payment_gateway_sandbox.domain.entities.Payment;
 import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentStatus;
 
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, UUID> {
+
+    /** Lock de escrita: serializa estornos concorrentes do mesmo pagamento. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Payment p where p.id = :id")
+    Optional<Payment> findByIdForUpdate(@Param("id") UUID id);
 
     Optional<Payment> findByIdempotencyKey(String idempotencyKey);
 
