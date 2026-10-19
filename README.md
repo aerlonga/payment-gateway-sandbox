@@ -1,4 +1,4 @@
-# payment-gateway-sandbox# Payment Gateway Sandbox — Especificação Técnica
+# Payment Gateway Sandbox — Especificação Técnica
 
 > Documento de especificação funcional e técnica do projeto. Serve como guia de implementação, do primeiro ao último endpoint, e como README principal do repositório.
 
@@ -8,16 +8,17 @@
 
 ### 1.1 O que é
 
-Uma API de processamento de pagamentos em **Java 21 + Spring Boot 3**, que integra com um gateway real em modo sandbox (Stripe), processa confirmações via webhook, desacopla o processamento pesado através de **Kafka**, e é implantada na **AWS** (EC2 + RDS).
+Uma API de processamento de pagamentos em **Java 21 + Spring Boot 3**, que integra com um gateway real em modo sandbox (Stripe) por trás de uma **abstração de provider**, processa confirmações via webhook, desacopla o processamento pesado através de **Kafka**, e é implantada na **AWS** (EC2 + RDS).
 
 ### 1.2 Por que esse projeto existe
 
 Demonstrar competência prática em:
 - Modelagem de domínio financeiro (dinheiro, estados de transação, idempotência)
 - Integração com API externa real (autenticação, webhooks, validação de assinatura)
+- Design desacoplado de dependências externas (Strategy/Adapter via `PaymentProvider`)
 - Arquitetura orientada a eventos (Kafka, outbox pattern)
 - Observabilidade e resiliência (Actuator, Resilience4j)
-- Teste de carga (k6)
+- Teste de carga com consciência do que está sendo medido (k6 + provider simulado)
 - Deploy em nuvem (AWS free tier) com consciência de trade-offs de custo
 
 ### 1.3 Escopo (o que este projeto NÃO é)
@@ -31,7 +32,7 @@ Não é um gateway de pagamento de verdade. Não processa dinheiro real. Não de
 ```
                      ┌─────────────────────┐
                      │      Cliente         │
-                     │ (Postman/Front/etc)  │
+                     │ (Postman/Front/k6)   │
                      └──────────┬───────────┘
                                 │ HTTPS
                                 ▼
@@ -41,40 +42,89 @@ Não é um gateway de pagamento de verdade. Não processa dinheiro real. Não de
                      │  EC2 t2/t3.micro     │
                      └──────┬───────┬───────┘
                             │       │
-                 cria/consulta      │ publica evento
-                    cobrança        │ (payment.created,
+                  PaymentProvider   │ publica evento
+                  (interface)       │ (payment.created,
                             │       │  payment.confirmed,
                             ▼       │  payment.failed)
-                     ┌──────────┐   │
-                     │  Stripe  │   │
-                     │ (Sandbox)│   ▼
-                     └────┬─────┘  ┌─────────────────┐
-                          │        │      Kafka        │
-                          │webhook │  (Docker na EC2   │
-                          ▼        │  ou instância      │
-                     ┌──────────┐  │  separada)         │
-                     │ /webhooks│  └────────┬───────────┘
-                     │  /stripe │           │
-                     └────┬─────┘           │ consome
-                          │                 ▼
-                          │        ┌─────────────────────┐
-                          └───────▶│  Payment Consumer   │
-                                   │  (processa evento,   │
-                                   │   atualiza estado,    │
-                                   │   idempotente)         │
-                                   └──────────┬────────────┘
-                                              ▼
-                                   ┌─────────────────────┐
-                                   │   RDS (Postgres)     │
-                                   │   free tier          │
-                                   └─────────────────────┘
+                   ┌────────────────┐   │
+                   │ Stripe (sandbox)│   ▼
+                   │      OU         │  ┌─────────────────┐
+                   │ Fake (loadtest) │  │      Kafka        │
+                   └────┬───────────┘  │  (Docker na EC2   │
+                        │              │  ou instância      │
+                        │ webhook      │  separada)         │
+                        ▼              └────────┬───────────┘
+                   ┌──────────┐                 │
+                   │ /webhooks│                 │ consome
+                   │  /stripe │                 ▼
+                   └────┬─────┘        ┌─────────────────────┐
+                        │              │  Payment Consumer   │
+                        └─────────────▶│  (processa evento,   │
+                                       │   atualiza estado,    │
+                                       │   idempotente)         │
+                                       └──────────┬────────────┘
+                                                  ▼
+                                       ┌─────────────────────┐
+                                       │   RDS (Postgres)     │
+                                       │   free tier          │
+                                       └─────────────────────┘
 ```
 
 **Fluxo resumido:**
-1. Cliente chama `POST /api/payments` → API cria registro local (status `PENDING`) e chama o Stripe.
+1. Cliente chama `POST /api/payments` → API cria registro local (status `PENDING`) e chama o provider ativo (Stripe por padrão).
 2. Stripe processa (sandbox) e, de forma assíncrona, chama nosso `POST /api/webhooks/stripe`.
 3. O endpoint de webhook valida a assinatura HMAC, **não processa nada pesado**, apenas publica um evento no Kafka e responde `200` rapidamente (Stripe tem timeout curto e reenvia se demorar).
 4. Um consumer Kafka separado lê o evento, atualiza o status da cobrança no Postgres, de forma idempotente (evita processar o mesmo evento duas vezes).
+
+### 2.1 Abstração de Provider (`PaymentProvider`)
+
+Toda comunicação com o gateway externo passa por uma interface. O domínio e os casos de uso **nunca** importam classes do Stripe.
+
+```java
+public interface PaymentProvider {
+    ProviderPayment createPayment(CreatePaymentCommand command);   // PaymentIntent.create
+    ProviderPayment getPayment(String providerPaymentId);
+    ProviderRefund  refund(RefundCommand command);                  // Refund.create
+    void            cancel(String providerPaymentId);
+    String          name();                                         // "stripe", "fake"
+}
+```
+
+| Implementação | Quando usar | Observação |
+|---|---|---|
+| `StripePaymentProvider` | Desenvolvimento, demo, deploy | Chama o Stripe em modo sandbox via `stripe-java`. Envolvida por Resilience4j. |
+| `FakePaymentProvider` | Testes de carga e testes automatizados | Responde localmente com um id `pi_fake_xxx` após uma latência simulada. Ativada pelo profile `loadtest`. |
+| *(futuro)* `MercadoPagoPaymentProvider` / `AsaasPaymentProvider` / Pix | Fase opcional | Prova que a abstração funciona e aproxima o projeto do mercado brasileiro. |
+
+**Seleção por configuração:**
+
+```yaml
+payment:
+  provider: stripe          # stripe | fake
+  fake:
+    latency-ms-min: 200
+    latency-ms-max: 400
+    failure-rate: 0.02      # 2% das cobranças falham, para exercitar o caminho de erro
+```
+
+```java
+@Configuration
+class PaymentProviderConfig {
+
+    @Bean
+    @ConditionalOnProperty(name = "payment.provider", havingValue = "stripe")
+    PaymentProvider stripeProvider(StripeProperties props) { ... }
+
+    @Bean
+    @ConditionalOnProperty(name = "payment.provider", havingValue = "fake")
+    PaymentProvider fakeProvider(FakeProviderProperties props) { ... }
+}
+```
+
+**Por que existe (e por que não é over-engineering aqui):**
+- O sandbox do Stripe tem limite de requisições por segundo bem menor que o de produção, o que inviabiliza teste de carga contra ele (detalhes na seção 7).
+- Permite testes de integração rápidos e determinísticos, sem rede.
+- Deixa a troca ou adição de um gateway (Mercado Pago, Asaas, Pix) restrita a uma classe nova na camada `infrastructure`.
 
 ---
 
@@ -89,8 +139,8 @@ Não é um gateway de pagamento de verdade. Não processa dinheiro real. Não de
 | amount | `BIGINT` (centavos) | **nunca usar `double`/`float` para dinheiro** |
 | currency | VARCHAR(3) | ex: `BRL`, `USD` |
 | status | ENUM | `PENDING`, `AUTHORIZED`, `CAPTURED`, `FAILED`, `REFUNDED`, `CANCELED` |
-| provider | VARCHAR | `stripe` |
-| provider_payment_id | VARCHAR | id retornado pelo Stripe (`pi_xxx`) |
+| provider | VARCHAR | `stripe` ou `fake` (nome do provider que processou) |
+| provider_payment_id | VARCHAR | id retornado pelo provider (`pi_xxx` no Stripe) |
 | idempotency_key | VARCHAR, UNIQUE | chave enviada pelo cliente no header |
 | created_at / updated_at | TIMESTAMP | |
 
@@ -147,7 +197,7 @@ Cria uma cobrança.
 **Regras de negócio:**
 - `amount` sempre em centavos, inteiro.
 - Se `Idempotency-Key` já existe no banco, retorna o **mesmo resultado** da primeira chamada (não cria duplicado) — status `200`, não `201`.
-- Cria `Payment` local com status `PENDING`, chama Stripe (`PaymentIntent.create`), salva `provider_payment_id`.
+- Cria `Payment` local com status `PENDING`, chama o `PaymentProvider` ativo (no Stripe: `PaymentIntent.create`), salva `provider_payment_id`.
 - Grava evento `payment.created` na tabela de outbox.
 
 **Responses:**
@@ -192,7 +242,7 @@ Estorna uma cobrança (total ou parcial).
 **Regras:**
 - Só permite estorno se status atual for `CAPTURED`.
 - Se `amount` omitido, estorna o valor total restante.
-- Chama Stripe `Refund.create`, atualiza status para `REFUNDED` (ou mantém `CAPTURED` com estorno parcial registrado, dependendo de como você quer modelar).
+- Chama `PaymentProvider.refund` (no Stripe: `Refund.create`), atualiza status para `REFUNDED` (ou mantém `CAPTURED` com estorno parcial registrado, dependendo de como você quer modelar).
 - Gera evento `payment.refunded`.
 
 **Responses:** `200 OK`, `400` (regra de negócio violada), `404`, `409` (estado inválido pra estorno)
@@ -228,6 +278,8 @@ Endpoint que o Stripe chama. **Não é para ser chamado manualmente pelo cliente
 **Responses:**
 - `200 OK` — sempre que a assinatura for válida (mesmo que o evento já tenha sido processado)
 - `400 Bad Request` — assinatura inválida
+
+> O `webhook signing secret` é lido de configuração. Isso permite que o teste de carga use um secret próprio para gerar payloads assinados sem depender do Stripe (seção 7).
 
 ---
 
@@ -286,7 +338,7 @@ Ao invés do endpoint de webhook publicar diretamente no Kafka, ele grava o even
 - **Validação de webhook:** HMAC SHA-256 usando o `webhook signing secret` do Stripe (biblioteca oficial `stripe-java` já tem utilitário pronto pra isso).
 - **Idempotência de escrita:** header `Idempotency-Key` em `POST /api/payments`.
 - **Idempotência de consumo:** tabela de eventos processados (webhook e Kafka).
-- **Circuit breaker / retry:** usar **Resilience4j** ao redor da chamada para a API do Stripe — se o Stripe estiver lento/indisponível, o circuito abre e falha rápido ao invés de travar threads.
+- **Circuit breaker / retry:** usar **Resilience4j** ao redor do `StripePaymentProvider` — se o Stripe estiver lento/indisponível, o circuito abre e falha rápido ao invés de travar threads. O `FakePaymentProvider` não precisa de circuit breaker, mas pode simular falhas (`failure-rate`) para exercitar o caminho de erro.
 - **Rate limiting (opcional):** bucket4j ou similar no endpoint de criação de pagamento.
 - **Segredos:** nunca commitar API keys — usar variáveis de ambiente / AWS Secrets Manager na fase de deploy.
 
@@ -296,25 +348,71 @@ Ao invés do endpoint de webhook publicar diretamente no Kafka, ele grava o even
 
 Ferramenta: **k6**.
 
-### 7.1 Cenários
+### 7.1 Por que o teste de carga NÃO roda contra o Stripe
 
-1. **Criação de cobrança sob concorrência**
-   - N usuários virtuais, cada um enviando `POST /api/payments` com `Idempotency-Key` diferente.
-   - Variante extra: repetir a **mesma** `Idempotency-Key` simultaneamente de propósito, pra validar que a idempotência segura mesmo sob concorrência (race condition clássica — precisa de constraint `UNIQUE` no banco + tratamento de exceção, não só verificação em memória).
+A API do Stripe aplica rate limit por conta, e o limite do ambiente de testes é menor que o de produção: segundo a documentação oficial, cerca de **25 operações por segundo no sandbox contra 100 em live mode**. A própria documentação desencoraja load test contra o sandbox, por dois motivos:
 
-2. **Webhook em rajada**
-   - Simular o Stripe mandando muitos webhooks de uma vez (script k6 chamando `/api/webhooks/stripe` com payloads e assinaturas válidas pré-geradas).
-   - Medir: o endpoint responde rápido (só publica no Kafka) mesmo sob carga? Ou trava por processar de forma síncrona?
+1. O teste bate em limites que não existiriam em produção (erros `429`), então você acaba medindo o rate limit do Stripe, não a sua aplicação.
+2. O sandbox não é um bom substituto da latência real: em live mode a cobrança passa por um gateway de pagamento, e no sandbox essa etapa é simulada, o que muda o perfil de latência.
 
-3. **Leitura pesada**
-   - `GET /api/payments?customerId=X` com grande volume de dados populado previamente (seed de dados).
-   - Comparar latência com e sem índice composto `(customer_id, status)`.
+A alternativa recomendada pelo Stripe é construir a integração com um mecanismo configurável para simular as chamadas à API, simulando também a latência. É exatamente o papel do `FakePaymentProvider` (seção 2.1).
 
-### 7.2 Métricas-alvo
+> Consulte a página de rate limits do Stripe (`docs.stripe.com/rate-limits`) antes de citar números no portfólio; os limites podem mudar.
+
+### 7.2 Como rodar
+
+```bash
+# sobe a aplicação com o provider simulado
+SPRING_PROFILES_ACTIVE=loadtest \
+PAYMENT_PROVIDER=fake \
+STRIPE_WEBHOOK_SECRET=whsec_loadtest_local \
+./mvnw spring-boot:run
+
+# executa um cenário
+k6 run load-tests/k6/create-payment.js
+```
+
+**Calibrando a latência do fake:** rode algumas dezenas de chamadas reais ao sandbox do Stripe (sem concorrência), meça o tempo de `PaymentIntent.create` visto pela sua aplicação e use a faixa (ex.: p50 e p95) em `latency-ms-min` / `latency-ms-max`. Documente os valores usados no README, para que os resultados sejam reproduzíveis.
+
+### 7.3 Cenários
+
+| # | Cenário | Provider | O que está sendo testado |
+|---|---|---|---|
+| 1 | Criação de cobrança sob concorrência | `fake` | Pool de conexões, transações, throughput da API |
+| 2 | Mesma `Idempotency-Key` em paralelo | `fake` | Constraint `UNIQUE` no banco + tratamento de exceção |
+| 3 | Webhook em rajada | nenhum (payloads assinados por você) | Velocidade de resposta do endpoint e vazão no Kafka |
+| 4 | Leitura pesada | nenhum (só banco) | Índice composto `(customer_id, status)` |
+
+**1. Criação de cobrança sob concorrência**
+- N usuários virtuais, cada um enviando `POST /api/payments` com `Idempotency-Key` diferente.
+- Com o provider simulado, a latência do "Stripe" é controlada, então o gargalo medido é o da sua aplicação.
+
+**2. Idempotência sob concorrência**
+- Repetir a **mesma** `Idempotency-Key` simultaneamente de propósito.
+- Esperado: apenas uma cobrança criada, as demais retornam o mesmo resultado.
+- É a race condition clássica: precisa de constraint `UNIQUE` no banco + tratamento de `DataIntegrityViolationException`, não só verificação em memória.
+
+**3. Webhook em rajada**
+- O script k6 gera payloads no formato do Stripe e calcula a assinatura `Stripe-Signature` (HMAC SHA-256) com o secret configurado no profile `loadtest`.
+- O Stripe não participa deste cenário.
+- Medir: o endpoint responde rápido (só publica no Kafka) mesmo sob carga? Ou trava por processar de forma síncrona?
+- Incluir `event_id` repetidos na rajada para validar a idempotência do consumo.
+
+**4. Leitura pesada**
+- `GET /api/payments?customerId=X` com grande volume de dados populado previamente (seed de dados).
+- Comparar latência com e sem índice composto `(customer_id, status)`.
+
+### 7.4 Métricas-alvo
 
 - p95 e p99 de latência
 - Taxa de erro (`http_req_failed`)
 - Throughput (req/s sustentado)
+- Lag do consumer Kafka durante a rajada de webhooks
+
+### 7.5 Limitações a documentar nos resultados
+
+- Os números de criação de cobrança refletem a aplicação com latência simulada do provider, não a latência de produção do Stripe.
+- O teste roda em instância free tier (t2/t3.micro); os valores absolutos são pequenos, o que importa é a análise do comportamento (onde satura, o que degrada primeiro).
 
 ---
 
@@ -342,6 +440,8 @@ Explicitar que, em um cenário de produção real, o ideal seria usar **Amazon M
 4. Variáveis de ambiente / secrets via `.env` ou AWS Systems Manager Parameter Store
 5. (Opcional) domínio + HTTPS
 
+> Na instância de deploy, rodar com `payment.provider=stripe`. O profile `loadtest` (provider `fake`) é usado apenas nas execuções do k6, de preferência em uma instância ou momento separado da demo.
+
 ---
 
 ## 9. Estrutura de Pastas
@@ -352,18 +452,27 @@ payment-gateway-sandbox/
 │   ├── api/                  # controllers
 │   ├── domain/                # entidades, enums
 │   ├── application/           # services, casos de uso
+│   │   └── port/
+│   │       └── PaymentProvider.java      # interface (porta)
 │   ├── infrastructure/
-│   │   ├── stripe/            # client Stripe
+│   │   ├── provider/
+│   │   │   ├── stripe/        # StripePaymentProvider + webhook utils
+│   │   │   └── fake/          # FakePaymentProvider (profile loadtest)
 │   │   ├── kafka/              # producers/consumers
 │   │   └── persistence/        # repositories
-│   ├── config/                 # security, resilience4j, kafka config
+│   ├── config/                 # security, resilience4j, kafka, provider config
 │   └── PaymentGatewayApplication.java
+├── src/main/resources/
+│   ├── application.yml
+│   └── application-loadtest.yml    # provider=fake, latências, secret de webhook de teste
 ├── src/test/java/...           # testes unitários e de integração (Testcontainers p/ Postgres + Kafka)
 ├── load-tests/
 │   └── k6/
 │       ├── create-payment.js
+│       ├── idempotency-race.js
 │       ├── webhook-burst.js
-│       └── read-heavy.js
+│       ├── read-heavy.js
+│       └── lib/sign-webhook.js     # gera Stripe-Signature para os payloads
 ├── docker-compose.yml           # Postgres + Kafka local pra desenvolvimento
 ├── docs/
 │   └── architecture-diagram.png
@@ -376,12 +485,12 @@ payment-gateway-sandbox/
 
 | Fase | Entrega | Objetivo |
 |---|---|---|
-| v1 | Endpoints core (4.1 a 4.6) + integração síncrona com Stripe sandbox, sem Kafka | Provar domínio de pagamento e integração externa |
+| v1 | Endpoints core (4.1 a 4.6) + interface `PaymentProvider` + `StripePaymentProvider` (sandbox), sem Kafka | Provar domínio de pagamento, integração externa e design desacoplado |
 | v2 | Webhook publica em Kafka, consumer processa de forma assíncrona | Provar mensageria e desacoplamento |
 | v3 | Outbox pattern + idempotência refinada no consumer | Provar maturidade em sistemas distribuídos |
-| v4 | Teste de carga completo (k6) documentado no README com resultados | Provar preocupação com performance |
+| v4 | `FakePaymentProvider` + teste de carga completo (k6) documentado no README com resultados e limitações | Provar preocupação com performance e rigor no que se mede |
 | v5 | Deploy AWS free tier (EC2 + RDS + Kafka em container) | Provar capacidade de subir e operar em nuvem |
-| v6 (opcional) | Split de pagamento (marketplace) ou recorrência/assinaturas | Expandir domínio de negócio |
+| v6 (opcional) | Segundo provider brasileiro (Mercado Pago, Asaas ou Pix) e/ou split de pagamento / recorrência | Provar a abstração de provider e expandir domínio de negócio |
 
 ---
 
@@ -392,7 +501,7 @@ payment-gateway-sandbox/
 - **Banco:** PostgreSQL
 - **Mensageria:** Apache Kafka
 - **Resiliência:** Resilience4j
-- **Gateway de pagamento:** Stripe (Java SDK, modo sandbox)
+- **Gateway de pagamento:** Stripe (Java SDK, modo sandbox) atrás da interface `PaymentProvider`, com `FakePaymentProvider` para testes de carga
 - **Teste de carga:** k6
 - **Testes:** JUnit 5, Testcontainers (Postgres + Kafka em container nos testes de integração)
 - **Deploy:** Docker, AWS (EC2, RDS)
@@ -446,17 +555,19 @@ Em `POST /api/v1/payments`, preencher o header `Idempotency-Key` com qualquer st
 
 | Item | Status |
 |---|---|
-| 4.1 `POST /payments` (idempotente) | ✅ |
+| 4.1 `POST /payments` (idempotente) | ✅ parcial: chama o provider ativo; sem `clientSecret` na resposta; request sem `paymentMethod`/`description` (e sem o campo `provider`, que agora vem da config) |
 | 4.2 `GET /payments/{id}` | ✅ |
-| 4.3 `GET /payments` (filtro + paginação) | ✅ |
-| 4.4 `POST /payments/{id}/refund` | ✅ parcial: valida estado e valor, grava evento; sem Stripe e sem controle de saldo estornado (qualquer estorno vira `REFUNDED`) |
+| 4.3 `GET /payments` (filtro + paginação) | ✅ filtro por `customerId`; filtro `status` e índice `(customer_id, status)` a confirmar |
+| 4.4 `POST /payments/{id}/refund` | ✅ parcial: valida estado e valor, grava evento; sem controle de saldo estornado (qualquer estorno vira `REFUNDED`) |
 | 4.5 `POST /payments/{id}/cancel` | ✅ |
 | 4.6 `GET /payments/{id}/history` | ✅ |
 | `PaymentEvent` gravado a cada mudança de estado (`PENDING_PUBLISH`) | ✅ |
 | Swagger / OpenAPI | ✅ |
-| Cliente Stripe (`PaymentIntent`, `Refund`) | ⏳ |
+| Interface `PaymentProvider` + config de seleção (`payment.provider`) | ✅ (`application/port`, `PaymentProviderConfig`; `PaymentService` usa a porta em create, cancel e refund) |
+| `StripePaymentProvider` (`PaymentIntent`, `Refund`) | ⏳ (só a dependência `stripe-java`) |
+| `FakePaymentProvider` + profile `loadtest` | ✅ (aprovação já nasce `CAPTURED`; latência e `failure-rate` configuráveis; teste unitário) |
 | 4.7 Webhook Stripe + `ProcessedWebhookEvent` | ⏳ (tabela criada, sem código) |
 | Kafka (producer, consumer, poller do outbox) | ⏳ |
 | Resilience4j | ⏳ (só dependência) |
-| Testes automatizados / k6 | ⏳ |
+| Testes automatizados / k6 | ⏳ (só `contextLoads`) |
 | Deploy AWS | ⏳ |

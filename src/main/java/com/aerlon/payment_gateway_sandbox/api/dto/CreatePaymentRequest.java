@@ -2,8 +2,6 @@ package com.aerlon.payment_gateway_sandbox.api.dto;
 
 import java.util.UUID;
 
-import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentProvider;
-
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -24,9 +22,5 @@ public record CreatePaymentRequest(
         @Schema(description = "Moeda ISO-4217", example = "BRL")
         @NotNull(message = "currency e obrigatorio")
         @Pattern(regexp = "^[A-Z]{3}$", message = "currency deve ter 3 letras maiusculas (ISO-4217)")
-        String currency,
-
-        @Schema(example = "STRIPE")
-        @NotNull(message = "provider e obrigatorio")
-        PaymentProvider provider) {
+        String currency) {
 }

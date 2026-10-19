@@ -20,6 +20,7 @@ import com.aerlon.payment_gateway_sandbox.domain.exception.IdempotencyConflictEx
 import com.aerlon.payment_gateway_sandbox.domain.exception.InvalidPaymentStateException;
 import com.aerlon.payment_gateway_sandbox.domain.exception.InvalidRefundException;
 import com.aerlon.payment_gateway_sandbox.domain.exception.PaymentNotFoundException;
+import com.aerlon.payment_gateway_sandbox.domain.exception.PaymentProviderException;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -40,6 +41,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidRefundException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidRefund(InvalidRefundException ex, WebRequest request) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(PaymentProviderException.class)
+    public ResponseEntity<ApiErrorResponse> handleProviderFailure(PaymentProviderException ex, WebRequest request) {
+        log.error("Falha no provider de pagamento", ex);
+        return build(HttpStatus.BAD_GATEWAY, "Falha ao comunicar com o provider de pagamento", request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

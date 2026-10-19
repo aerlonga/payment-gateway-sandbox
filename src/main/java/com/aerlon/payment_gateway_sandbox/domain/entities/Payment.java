@@ -3,7 +3,6 @@ package com.aerlon.payment_gateway_sandbox.domain.entities;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentProvider;
 import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentStatus;
 
 import jakarta.persistence.Column;
@@ -47,9 +46,9 @@ public class Payment {
     @Column(name = "status", nullable = false, length = 20)
     private PaymentStatus status;
 
-    @Enumerated(EnumType.STRING)
+    /** Nome do provider que processou (PaymentProvider.name()), ex.: "stripe", "fake". */
     @Column(name = "provider", nullable = false, length = 30)
-    private PaymentProvider provider;
+    private String provider;
 
     @Column(name = "provider_payment_id", length = 100)
     private String providerPaymentId;

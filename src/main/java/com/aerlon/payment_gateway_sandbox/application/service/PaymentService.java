@@ -18,6 +18,11 @@ import com.aerlon.payment_gateway_sandbox.api.dto.PaymentEventResponse;
 import com.aerlon.payment_gateway_sandbox.api.dto.PaymentResponse;
 import com.aerlon.payment_gateway_sandbox.api.dto.RefundRequest;
 import com.aerlon.payment_gateway_sandbox.application.mapper.PaymentMapper;
+import com.aerlon.payment_gateway_sandbox.application.port.CreatePaymentCommand;
+import com.aerlon.payment_gateway_sandbox.application.port.PaymentProvider;
+import com.aerlon.payment_gateway_sandbox.application.port.ProviderPayment;
+import com.aerlon.payment_gateway_sandbox.application.port.ProviderRefund;
+import com.aerlon.payment_gateway_sandbox.application.port.RefundCommand;
 import com.aerlon.payment_gateway_sandbox.domain.entities.Payment;
 import com.aerlon.payment_gateway_sandbox.domain.entities.PaymentEvent;
 import com.aerlon.payment_gateway_sandbox.domain.enums.EventPublishStatus;
@@ -40,7 +45,8 @@ public class PaymentService {
 
     /** Transicoes permitidas na maquina de estados do pagamento. */
     private static final Map<PaymentStatus, EnumSet<PaymentStatus>> ALLOWED_TRANSITIONS = Map.of(
-            PaymentStatus.PENDING, EnumSet.of(PaymentStatus.AUTHORIZED, PaymentStatus.FAILED, PaymentStatus.CANCELED),
+            PaymentStatus.PENDING, EnumSet.of(PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED, PaymentStatus.FAILED,
+                    PaymentStatus.CANCELED),
             PaymentStatus.AUTHORIZED, EnumSet.of(PaymentStatus.CAPTURED, PaymentStatus.FAILED, PaymentStatus.CANCELED),
             PaymentStatus.CAPTURED, EnumSet.of(PaymentStatus.REFUNDED),
             PaymentStatus.FAILED, EnumSet.noneOf(PaymentStatus.class),
@@ -50,6 +56,7 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentMapper paymentMapper;
+    private final PaymentProvider paymentProvider;
 
     /**
      * Cria um pagamento. Se a Idempotency-Key ja existir, devolve o pagamento
@@ -67,8 +74,17 @@ public class PaymentService {
             return CreatePaymentResult.replayed(paymentMapper.toResponse(payment));
         }
 
-        Payment saved = paymentRepository.save(paymentMapper.toEntity(request, idempotencyKey));
+        Payment saved = paymentRepository.save(
+                paymentMapper.toEntity(request, idempotencyKey, paymentProvider.name()));
         recordEvent(saved, PaymentEventType.CREATED, Map.of());
+
+        ProviderPayment charge = paymentProvider.createPayment(new CreatePaymentCommand(
+                saved.getId(), saved.getCustomerId(), saved.getAmount(), saved.getCurrency(), idempotencyKey));
+        if (charge.status() != PaymentStatus.PENDING) {
+            transition(saved, charge.status(), charge.providerPaymentId(), Map.of());
+        } else {
+            saved.setProviderPaymentId(charge.providerPaymentId());
+        }
         log.info("Pagamento criado id={} customer={} amount={} {}",
                 saved.getId(), saved.getCustomerId(), saved.getAmount(), saved.getCurrency());
         return CreatePaymentResult.created(paymentMapper.toResponse(saved));
@@ -105,7 +121,12 @@ public class PaymentService {
 
     @Transactional
     public PaymentResponse cancel(UUID id) {
-        return changeStatus(id, PaymentStatus.CANCELED, null);
+        Payment payment = getOrThrow(id);
+        assertTransition(payment.getStatus(), PaymentStatus.CANCELED);
+        if (payment.getProviderPaymentId() != null) {
+            paymentProvider.cancel(payment.getProviderPaymentId());
+        }
+        return paymentMapper.toResponse(transition(payment, PaymentStatus.CANCELED, null, Map.of()));
     }
 
     /**
@@ -121,8 +142,14 @@ public class PaymentService {
                     + ") excede o valor capturado (" + payment.getAmount() + ")");
         }
 
+        assertTransition(payment.getStatus(), PaymentStatus.REFUNDED);
+        long refundAmount = request.amount() != null ? request.amount() : payment.getAmount();
+        ProviderRefund providerRefund = paymentProvider.refund(
+                new RefundCommand(payment.getProviderPaymentId(), refundAmount, request.reason()));
+
         Map<String, Object> extra = new LinkedHashMap<>();
-        extra.put("refundedAmount", request.amount() != null ? request.amount() : payment.getAmount());
+        extra.put("refundedAmount", refundAmount);
+        extra.put("providerRefundId", providerRefund.providerRefundId());
         extra.put("reason", request.reason());
         return paymentMapper.toResponse(transition(payment, PaymentStatus.REFUNDED, null, extra));
     }
@@ -133,9 +160,7 @@ public class PaymentService {
         if (current == newStatus) {
             return payment;
         }
-        if (!ALLOWED_TRANSITIONS.getOrDefault(current, EnumSet.noneOf(PaymentStatus.class)).contains(newStatus)) {
-            throw new InvalidPaymentStateException(current, newStatus);
-        }
+        assertTransition(current, newStatus);
 
         payment.setStatus(newStatus);
         payment.setUpdatedAt(Instant.now());
@@ -148,6 +173,13 @@ public class PaymentService {
         recordEvent(payment, PaymentEventType.forStatus(newStatus), payload);
         log.info("Pagamento id={} {} -> {}", payment.getId(), current, newStatus);
         return payment;
+    }
+
+    private void assertTransition(PaymentStatus current, PaymentStatus newStatus) {
+        if (current != newStatus
+                && !ALLOWED_TRANSITIONS.getOrDefault(current, EnumSet.noneOf(PaymentStatus.class)).contains(newStatus)) {
+            throw new InvalidPaymentStateException(current, newStatus);
+        }
     }
 
     /** Grava o evento na mesma transacao da mudanca (base do outbox). */
@@ -175,7 +207,6 @@ public class PaymentService {
     private boolean matchesRequest(Payment payment, CreatePaymentRequest request) {
         return payment.getCustomerId().equals(request.customerId())
                 && payment.getAmount().equals(request.amount())
-                && payment.getCurrency().equalsIgnoreCase(request.currency())
-                && payment.getProvider() == request.provider();
+                && payment.getCurrency().equalsIgnoreCase(request.currency());
     }
 }

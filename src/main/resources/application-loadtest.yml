@@ -1,0 +1,6 @@
+payment:
+  provider: fake
+  fake:
+    latency-ms-min: 200
+    latency-ms-max: 400
+    failure-rate: 0.02
