@@ -14,6 +14,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import com.aerlon.payment_gateway_sandbox.api.dto.PaymentResponse;
 import com.aerlon.payment_gateway_sandbox.api.dto.RefundRequest;
@@ -45,7 +46,8 @@ class PaymentServiceRefundTest {
             RefundCommand command = inv.getArgument(0);
             return new ProviderRefund("re_test", command.amount());
         });
-        service = new PaymentService(paymentRepository, eventRepository, new PaymentMapper(), provider);
+        service = new PaymentService(paymentRepository, eventRepository, new PaymentMapper(), provider,
+                mock(PlatformTransactionManager.class));
     }
 
     private Payment captured(long amount, long refunded) {
