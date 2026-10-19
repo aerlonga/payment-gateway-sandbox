@@ -565,10 +565,10 @@ Em `POST /api/v1/payments`, preencher o header `Idempotency-Key` com qualquer st
 | `PaymentEvent` gravado a cada mudança de estado (`PENDING_PUBLISH`) | ✅ |
 | Swagger / OpenAPI | ✅ |
 | Interface `PaymentProvider` + config de seleção (`payment.provider`) | ✅ (`application/port`, `PaymentProviderConfig`; `PaymentService` usa a porta em create, cancel e refund) |
-| `StripePaymentProvider` (`PaymentIntent`, `Refund`) | ⏳ (só a dependência `stripe-java`) |
+| `StripePaymentProvider` (`PaymentIntent`, `Refund`) | ✅ (Idempotency-Key no create, circuit breaker Resilience4j, recusa de cartão vira `FAILED`; teste unitário com mock; ainda não validado contra o sandbox real) |
 | `FakePaymentProvider` + profile `loadtest` | ✅ (aprovação já nasce `CAPTURED`; latência e `failure-rate` configuráveis; teste unitário) |
 | 4.7 Webhook Stripe + `ProcessedWebhookEvent` | ⏳ (tabela criada, sem código) |
 | Kafka (producer, consumer, poller do outbox) | ⏳ |
-| Resilience4j | ⏳ (só dependência) |
+| Resilience4j | ✅ parcial: circuit breaker (config default) no Stripe; sem retry/time limiter próprios (o SDK faz retry de rede) |
 | Testes automatizados / k6 | ⏳ (só `contextLoads`) |
 | Deploy AWS | ⏳ |
