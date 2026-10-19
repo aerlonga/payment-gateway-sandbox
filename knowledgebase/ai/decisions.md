@@ -63,3 +63,14 @@
 - **Decisao:** nunca adicionar `Co-Authored-By` (nem atribuicao a Claude/agentes) em commits ou descricoes de PR deste repositorio.
 - **Motivo:** pedido explicito do dono do projeto.
 - **Consequencias:** vale para qualquer agente, mesmo que a ferramenta sugira o trailer; a regra do projeto prevalece.
+
+## ADR-009 — `clientSecret` nao e persistido; replay de `PENDING` busca no provider (2026-10-19)
+
+- **Decisao:** o `clientSecret` do `PaymentIntent` so existe na resposta do `POST` (201). Nao e gravado no banco, nao aparece em `GET`, nem em log. No replay (200) de um pagamento ainda `PENDING`, o servico o busca de novo no provider (`getPayment`); se o provider falhar, o replay responde sem o segredo.
+- **Motivo:** o front precisa dele para confirmar o pagamento (README 4.1), mas e uma credencial de uso do cliente: guardar em banco e logs ampliaria a superficie. Quem repete o `POST` costuma ter perdido a resposta justamente quando precisa do segredo.
+- **Consequencias:**
+  - Replay de pagamento ja `CAPTURED`/final nao chama o provider nem devolve segredo.
+  - O campo sai do JSON quando nulo (`@JsonInclude(NON_NULL)`).
+  - `paymentMethod` (tipo, ex.: `card`) e `description` passaram a fazer parte do payload comparado na idempotencia (mesma chave com valor diferente = 409) e sao gravados em `payments` (V5).
+  - Com `paymentMethod` explicito o Stripe recebe `payment_method_types` em vez de `automatic_payment_methods` (sao excludentes).
+

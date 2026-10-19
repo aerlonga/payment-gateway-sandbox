@@ -3,7 +3,7 @@
 ## Status
 
 - Tipo: feature
-- Status: implementado (faltam `clientSecret`, `paymentMethod`/`description` e testes de controller)
+- Status: implementado (`clientSecret` e campos do request entregues na [[006-client-secret-e-campos-do-request|feature 006]])
 - Ultima atualizacao: 2026-10-19
 
 ## Objetivo
@@ -41,6 +41,5 @@ Swagger em `http://localhost:8080/swagger-ui.html` seguindo o fluxo do `NOTAS.md
 
 ## Pendencias
 
-- `clientSecret` na resposta do `POST`; `paymentMethod` e `description` no request (README 4.1).
-- Testes de controller.
+- Teste de integracao do controller com o contexto completo.
 - Webhook (4.7) e Kafka: v2/v3.

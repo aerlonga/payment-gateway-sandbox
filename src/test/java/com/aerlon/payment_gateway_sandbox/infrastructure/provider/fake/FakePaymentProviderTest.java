@@ -15,7 +15,7 @@ import com.aerlon.payment_gateway_sandbox.domain.enums.PaymentStatus;
 class FakePaymentProviderTest {
 
     private static final CreatePaymentCommand COMMAND =
-            new CreatePaymentCommand(UUID.randomUUID(), UUID.randomUUID(), 15000, "BRL", "key-1");
+            new CreatePaymentCommand(UUID.randomUUID(), UUID.randomUUID(), 15000, "BRL", "key-1", null, null);
 
     @Test
     void approvesAndCapturesWhenFailureRateIsZero() {

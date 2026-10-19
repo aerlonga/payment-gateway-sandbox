@@ -32,7 +32,7 @@ import com.stripe.service.RefundService;
 class StripePaymentProviderTest {
 
     private static final CreatePaymentCommand COMMAND =
-            new CreatePaymentCommand(UUID.randomUUID(), UUID.randomUUID(), 15000, "BRL", "key-1");
+            new CreatePaymentCommand(UUID.randomUUID(), UUID.randomUUID(), 15000, "BRL", "key-1", null, null);
 
     private StripeClient client;
     private PaymentIntentService intents;
@@ -147,5 +147,35 @@ class StripePaymentProviderTest {
         ArgumentCaptor<RequestOptions> options = ArgumentCaptor.forClass(RequestOptions.class);
         org.mockito.Mockito.verify(intents).create(any(PaymentIntentCreateParams.class), options.capture());
         assertThat(options.getValue().getIdempotencyKey()).isEqualTo(COMMAND.customerId() + ":key-1");
+    }
+
+    @Test
+    void sendsDescriptionAndExplicitPaymentMethodTypeInsteadOfAutomatic() throws Exception {
+        PaymentIntent created = intent("pi_4", "requires_payment_method");
+        when(intents.create(any(PaymentIntentCreateParams.class), any(RequestOptions.class))).thenReturn(created);
+        CreatePaymentCommand command = new CreatePaymentCommand(
+                UUID.randomUUID(), UUID.randomUUID(), 15000, "BRL", "key-2", "card", "Pedido #1234");
+
+        provider("").createPayment(command);
+
+        ArgumentCaptor<PaymentIntentCreateParams> params = ArgumentCaptor.forClass(PaymentIntentCreateParams.class);
+        org.mockito.Mockito.verify(intents).create(params.capture(), any(RequestOptions.class));
+        assertThat(params.getValue().getDescription()).isEqualTo("Pedido #1234");
+        assertThat(params.getValue().getPaymentMethodTypes()).containsExactly("card");
+        assertThat(params.getValue().getAutomaticPaymentMethods()).isNull();
+    }
+
+    @Test
+    void usesAutomaticPaymentMethodsWhenNoTypeIsRequested() throws Exception {
+        PaymentIntent created = intent("pi_5", "requires_payment_method");
+        when(intents.create(any(PaymentIntentCreateParams.class), any(RequestOptions.class))).thenReturn(created);
+
+        provider("").createPayment(COMMAND);
+
+        ArgumentCaptor<PaymentIntentCreateParams> params = ArgumentCaptor.forClass(PaymentIntentCreateParams.class);
+        org.mockito.Mockito.verify(intents).create(params.capture(), any(RequestOptions.class));
+        assertThat(params.getValue().getAutomaticPaymentMethods()).isNotNull();
+        assertThat(params.getValue().getPaymentMethodTypes()).isNullOrEmpty();
+        assertThat(params.getValue().getDescription()).isNull();
     }
 }

@@ -32,4 +32,4 @@ O projeto existe para demonstrar: modelagem de dominio financeiro, integracao co
 
 ## Estado atual (resumo)
 
-v1 em andamento: endpoints 4.1 a 4.6, `PaymentProvider` + Stripe + Fake, estorno parcial, idempotencia sob concorrencia. Faltam `clientSecret` na resposta, `paymentMethod`/`description` no request e testes de controller. Webhook, Kafka, k6 e deploy sao fases seguintes. Detalhe por item na secao 13 do README e em [[../features/index|Features]].
+v1 em andamento: endpoints 4.1 a 4.6, `PaymentProvider` + Stripe + Fake, estorno parcial, idempotencia sob concorrencia. `clientSecret` na criacao e `paymentMethod`/`description` no request ja existem; faltam testes de integracao de controller com o contexto completo. Webhook, Kafka, k6 e deploy sao fases seguintes. Detalhe por item na secao 13 do README e em [[../features/index|Features]].

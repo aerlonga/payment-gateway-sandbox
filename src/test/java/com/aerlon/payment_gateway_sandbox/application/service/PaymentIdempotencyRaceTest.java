@@ -60,7 +60,7 @@ class PaymentIdempotencyRaceTest {
     @Test
     void sameKeyAndPayloadInParallelCreatesOnlyOnePayment() throws Exception {
         String key = "race-" + UUID.randomUUID();
-        CreatePaymentRequest request = new CreatePaymentRequest(UUID.randomUUID(), 15000L, "BRL");
+        CreatePaymentRequest request = new CreatePaymentRequest(UUID.randomUUID(), 15000L, "BRL", null, null);
 
         List<Callable<CreatePaymentResult>> calls = new ArrayList<>();
         for (int i = 0; i < THREADS; i++) {
@@ -86,7 +86,7 @@ class PaymentIdempotencyRaceTest {
         List<Callable<CreatePaymentResult>> calls = new ArrayList<>();
         for (int i = 0; i < THREADS; i++) {
             long amount = 1000L + i; // payloads todos diferentes
-            calls.add(() -> service.create(new CreatePaymentRequest(customer, amount, "BRL"), key));
+            calls.add(() -> service.create(new CreatePaymentRequest(customer, amount, "BRL", null, null), key));
         }
         List<Object> results = race(calls);
 
