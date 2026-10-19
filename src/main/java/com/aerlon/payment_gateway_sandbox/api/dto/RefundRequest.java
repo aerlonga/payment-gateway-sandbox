@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size;
 @Schema(description = "Dados para estorno de um pagamento")
 public record RefundRequest(
 
-        @Schema(description = "Valor em centavos. Omitido = estorno total", example = "5000")
+        @Schema(description = "Valor em centavos. Omitido = estorna o saldo restante", example = "5000")
         @Positive(message = "amount deve ser maior que zero")
         Long amount,
 

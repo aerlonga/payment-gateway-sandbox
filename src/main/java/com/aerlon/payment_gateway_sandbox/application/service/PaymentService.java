@@ -130,28 +130,46 @@ public class PaymentService {
     }
 
     /**
-     * Estorna um pagamento capturado. amount nulo = estorno total. O valor nao
-     * pode exceder o capturado. Ainda nao ha controle de saldo estornado:
-     * qualquer estorno leva o pagamento a REFUNDED.
+     * Estorna um pagamento capturado. amount nulo = estorno do saldo restante. O valor
+     * nao pode exceder o saldo (amount - refundedAmount). O pagamento segue CAPTURED
+     * enquanto houver saldo e vira REFUNDED quando o total e estornado.
      */
     @Transactional
     public PaymentResponse refund(UUID id, RefundRequest request) {
-        Payment payment = getOrThrow(id);
-        if (request.amount() != null && request.amount() > payment.getAmount()) {
-            throw new InvalidRefundException("Valor do estorno (" + request.amount()
-                    + ") excede o valor capturado (" + payment.getAmount() + ")");
+        Payment payment = paymentRepository.findByIdForUpdate(id).orElseThrow(() -> new PaymentNotFoundException(id));
+        if (payment.getStatus() != PaymentStatus.CAPTURED) {
+            throw new InvalidPaymentStateException(
+                    "Estorno so e permitido para pagamentos CAPTURED (status atual: " + payment.getStatus() + ")");
         }
 
-        assertTransition(payment.getStatus(), PaymentStatus.REFUNDED);
-        long refundAmount = request.amount() != null ? request.amount() : payment.getAmount();
+        long remaining = payment.getAmount() - payment.getRefundedAmount();
+        long refundAmount = request.amount() != null ? request.amount() : remaining;
+        if (refundAmount > remaining) {
+            throw new InvalidRefundException("Valor do estorno (" + refundAmount
+                    + ") excede o saldo estornavel (" + remaining + ")");
+        }
+
         ProviderRefund providerRefund = paymentProvider.refund(
                 new RefundCommand(payment.getProviderPaymentId(), refundAmount, request.reason()));
 
+        long totalRefunded = payment.getRefundedAmount() + refundAmount;
+        payment.setRefundedAmount(totalRefunded);
+
         Map<String, Object> extra = new LinkedHashMap<>();
         extra.put("refundedAmount", refundAmount);
+        extra.put("totalRefunded", totalRefunded);
+        extra.put("remaining", payment.getAmount() - totalRefunded);
         extra.put("providerRefundId", providerRefund.providerRefundId());
         extra.put("reason", request.reason());
-        return paymentMapper.toResponse(transition(payment, PaymentStatus.REFUNDED, null, extra));
+
+        if (totalRefunded == payment.getAmount()) {
+            return paymentMapper.toResponse(transition(payment, PaymentStatus.REFUNDED, null, extra));
+        }
+        payment.setUpdatedAt(Instant.now());
+        recordEvent(payment, PaymentEventType.REFUNDED, extra);
+        log.info("Pagamento id={} estorno parcial {} (total estornado {}/{})",
+                payment.getId(), refundAmount, totalRefunded, payment.getAmount());
+        return paymentMapper.toResponse(payment);
     }
 
     private Payment transition(Payment payment, PaymentStatus newStatus, String providerPaymentId,

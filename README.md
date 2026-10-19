@@ -242,8 +242,9 @@ Estorna uma cobrança (total ou parcial).
 **Regras:**
 - Só permite estorno se status atual for `CAPTURED`.
 - Se `amount` omitido, estorna o valor total restante.
-- Chama `PaymentProvider.refund` (no Stripe: `Refund.create`), atualiza status para `REFUNDED` (ou mantém `CAPTURED` com estorno parcial registrado, dependendo de como você quer modelar).
-- Gera evento `payment.refunded`.
+- Chama `PaymentProvider.refund` (no Stripe: `Refund.create`). Mantém `CAPTURED` com `refunded_amount` acumulado enquanto houver saldo; quando o total estornado iguala `amount`, o status vira `REFUNDED`.
+- `amount` maior que o saldo restante (`amount - refunded_amount`) retorna `400`.
+- Gera evento `payment.refunded` a cada estorno (payload com `refundedAmount`, `totalRefunded` e `remaining`).
 
 **Responses:** `200 OK`, `400` (regra de negócio violada), `404`, `409` (estado inválido pra estorno)
 
@@ -558,7 +559,7 @@ Em `POST /api/v1/payments`, preencher o header `Idempotency-Key` com qualquer st
 | 4.1 `POST /payments` (idempotente) | ✅ parcial: chama o provider ativo; sem `clientSecret` na resposta; request sem `paymentMethod`/`description` (e sem o campo `provider`, que agora vem da config) |
 | 4.2 `GET /payments/{id}` | ✅ |
 | 4.3 `GET /payments` (filtro + paginação) | ✅ filtro por `customerId`; filtro `status` e índice `(customer_id, status)` a confirmar |
-| 4.4 `POST /payments/{id}/refund` | ✅ parcial: valida estado e valor, grava evento; sem controle de saldo estornado (qualquer estorno vira `REFUNDED`) |
+| 4.4 `POST /payments/{id}/refund` | ✅ estorno total e parcial: `refunded_amount` acumulado, valida contra o saldo restante, `CAPTURED` até estornar tudo, depois `REFUNDED`; lock pessimista contra estornos concorrentes |
 | 4.5 `POST /payments/{id}/cancel` | ✅ |
 | 4.6 `GET /payments/{id}/history` | ✅ |
 | `PaymentEvent` gravado a cada mudança de estado (`PENDING_PUBLISH`) | ✅ |

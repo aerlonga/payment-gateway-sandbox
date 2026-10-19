@@ -53,6 +53,11 @@ public class Payment {
     @Column(name = "provider_payment_id", length = 100)
     private String providerPaymentId;
 
+    /** Soma ja estornada, em centavos. Quando iguala amount o pagamento vira REFUNDED. */
+    @Builder.Default
+    @Column(name = "refunded_amount", nullable = false)
+    private Long refundedAmount = 0L;
+
     @Column(name = "idempotency_key", nullable = false, length = 100, updatable = false)
     private String idempotencyKey;
 

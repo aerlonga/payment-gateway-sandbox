@@ -90,7 +90,7 @@ PENDING ──► AUTHORIZED ──► CAPTURED ──► REFUNDED
   docker exec -it payment-gateway-postgres psql -U postgres -d payment_gateway \
     -c "update payments set status='CAPTURED' where id='<id>';"
   ```
-- Refund: valor nao pode exceder o do pagamento. Ainda nao ha controle de saldo estornado: qualquer estorno (inclusive parcial) leva a `REFUNDED`.
+- Refund: valor nao pode exceder o saldo (`amount - refunded_amount`). Estorno parcial mantem `CAPTURED`; ao estornar o total vira `REFUNDED` (final).
 - `providerPaymentId` fica `null` porque nao ha cliente Stripe.
 
 ## Conceitos discutidos
