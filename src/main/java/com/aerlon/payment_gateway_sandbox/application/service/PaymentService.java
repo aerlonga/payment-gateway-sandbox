@@ -9,9 +9,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.aerlon.payment_gateway_sandbox.api.dto.CreatePaymentRequest;
 import com.aerlon.payment_gateway_sandbox.api.dto.PaymentEventResponse;
@@ -35,11 +38,9 @@ import com.aerlon.payment_gateway_sandbox.domain.exception.PaymentNotFoundExcept
 import com.aerlon.payment_gateway_sandbox.infrastructure.persistence.PaymentEventRepository;
 import com.aerlon.payment_gateway_sandbox.infrastructure.persistence.PaymentRepository;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class PaymentService {
 
@@ -57,24 +58,45 @@ public class PaymentService {
     private final PaymentEventRepository paymentEventRepository;
     private final PaymentMapper paymentMapper;
     private final PaymentProvider paymentProvider;
+    private final TransactionTemplate transactionTemplate;
+
+    public PaymentService(PaymentRepository paymentRepository, PaymentEventRepository paymentEventRepository,
+            PaymentMapper paymentMapper, PaymentProvider paymentProvider,
+            PlatformTransactionManager transactionManager) {
+        this.paymentRepository = paymentRepository;
+        this.paymentEventRepository = paymentEventRepository;
+        this.paymentMapper = paymentMapper;
+        this.paymentProvider = paymentProvider;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+    }
 
     /**
      * Cria um pagamento. Se a Idempotency-Key ja existir, devolve o pagamento
      * original quando o payload for igual, ou falha em caso de divergencia.
+     *
+     * Chamadas concorrentes com a mesma chave: o insert e enviado ao banco antes de
+     * chamar o provider, entao a constraint UNIQUE decide quem cria. As perdedoras
+     * esperam o commit da vencedora, tomam a violacao e reavaliam como replay (a
+     * transacao delas ja esta abortada, por isso a releitura acontece fora dela).
      */
-    @Transactional
     public CreatePaymentResult create(CreatePaymentRequest request, String idempotencyKey) {
+        try {
+            return transactionTemplate.execute(status -> doCreate(request, idempotencyKey));
+        } catch (DataIntegrityViolationException e) {
+            Payment existing = paymentRepository.findByIdempotencyKey(idempotencyKey).orElseThrow(() -> e);
+            log.debug("Corrida de idempotencia resolvida como replay key={} payment={}",
+                    idempotencyKey, existing.getId());
+            return replay(existing, request, idempotencyKey);
+        }
+    }
+
+    private CreatePaymentResult doCreate(CreatePaymentRequest request, String idempotencyKey) {
         Optional<Payment> existing = paymentRepository.findByIdempotencyKey(idempotencyKey);
         if (existing.isPresent()) {
-            Payment payment = existing.get();
-            if (!matchesRequest(payment, request)) {
-                throw new IdempotencyConflictException(idempotencyKey);
-            }
-            log.debug("Replay idempotente para key={} payment={}", idempotencyKey, payment.getId());
-            return CreatePaymentResult.replayed(paymentMapper.toResponse(payment));
+            return replay(existing.get(), request, idempotencyKey);
         }
 
-        Payment saved = paymentRepository.save(
+        Payment saved = paymentRepository.saveAndFlush(
                 paymentMapper.toEntity(request, idempotencyKey, paymentProvider.name()));
         recordEvent(saved, PaymentEventType.CREATED, Map.of());
 
@@ -88,6 +110,14 @@ public class PaymentService {
         log.info("Pagamento criado id={} customer={} amount={} {}",
                 saved.getId(), saved.getCustomerId(), saved.getAmount(), saved.getCurrency());
         return CreatePaymentResult.created(paymentMapper.toResponse(saved));
+    }
+
+    private CreatePaymentResult replay(Payment payment, CreatePaymentRequest request, String idempotencyKey) {
+        if (!matchesRequest(payment, request)) {
+            throw new IdempotencyConflictException(idempotencyKey);
+        }
+        log.debug("Replay idempotente para key={} payment={}", idempotencyKey, payment.getId());
+        return CreatePaymentResult.replayed(paymentMapper.toResponse(payment));
     }
 
     @Transactional(readOnly = true)
