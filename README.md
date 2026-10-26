@@ -19,7 +19,7 @@ Demonstrar competência prática em:
 - Arquitetura orientada a eventos (Kafka, outbox pattern)
 - Observabilidade e resiliência (Actuator, Resilience4j)
 - Teste de carga com consciência do que está sendo medido (k6 + provider simulado)
-- Deploy em nuvem (AWS free tier) com consciência de trade-offs de custo
+- Deploy em nuvem (AWS, plano gratuito com créditos) com consciência de trade-offs de custo
 
 ### 1.3 Escopo (o que este projeto NÃO é)
 
@@ -39,7 +39,7 @@ Não é um gateway de pagamento de verdade. Não processa dinheiro real. Não de
                      ┌─────────────────────┐
                      │   Payment API        │
                      │  (Spring Boot)       │
-                     │  EC2 t2/t3.micro     │
+                     │  EC2 t3.small/medium │
                      └──────┬───────┬───────┘
                             │       │
                   PaymentProvider   │ publica evento
@@ -66,7 +66,7 @@ Não é um gateway de pagamento de verdade. Não processa dinheiro real. Não de
                                                   ▼
                                        ┌─────────────────────┐
                                        │   RDS (Postgres)     │
-                                       │   free tier          │
+                                       │   db.t3.micro        │
                                        └─────────────────────┘
 ```
 
@@ -413,20 +413,22 @@ k6 run load-tests/k6/create-payment.js
 ### 7.5 Limitações a documentar nos resultados
 
 - Os números de criação de cobrança refletem a aplicação com latência simulada do provider, não a latência de produção do Stripe.
-- O teste roda em instância free tier (t2/t3.micro); os valores absolutos são pequenos, o que importa é a análise do comportamento (onde satura, o que degrada primeiro).
+- O teste roda em instância pequena (EC2 t3.small/t3.medium); os valores absolutos são pequenos, o que importa é a análise do comportamento (onde satura, o que degrada primeiro).
 
 ---
 
-## 8. Deploy AWS (Free Tier)
+## 8. Deploy AWS (plano gratuito com créditos)
+
+> **Custos:** contas AWS criadas a partir de 15/07/2025 não têm mais o free tier de 12 meses com t2/t3.micro. Têm um plano gratuito com créditos de US$ 100 (mais até US$ 100 por atividades concluídas), válido por 6 meses ou até os créditos acabarem. Confira o tipo da conta no console de Billing, crie um alerta no AWS Budgets antes de subir qualquer recurso e destrua o que ficar ocioso.
 
 ### 8.1 Componentes
 
 | Componente | Serviço AWS | Observação |
 |---|---|---|
-| API Spring Boot | EC2 (t2.micro/t3.micro) | free tier primeiro ano |
-| Banco de dados | RDS Postgres (t2/t3.micro) | free tier primeiro ano |
-| Kafka | Docker Compose na própria EC2 (ou EC2 separada) | **MSK não entra no free tier de forma prática** — rodar standalone é a opção viável |
-| Deploy | Elastic Beanstalk ou EC2 manual com Docker | Fargate free tier é limitado, EC2 direto é mais previsível |
+| API Spring Boot | EC2 (t3.small ou t3.medium) | t3.micro (1 GB) não comporta Spring Boot e Kafka juntos |
+| Banco de dados | RDS Postgres (db.t3.micro) | consumo coberto pelos créditos do plano gratuito |
+| Kafka | Docker Compose na própria EC2 (ou EC2 separada) | **MSK não é viável em ambiente de estudo** (custo) — rodar standalone é a opção viável |
+| Deploy | Elastic Beanstalk ou EC2 manual com Docker | Fargate tem custo menos previsível nos créditos, EC2 direto é mais previsível |
 | Domínio/HTTPS (opcional) | Route53 + ACM | custo pequeno no domínio |
 
 ### 8.2 Justificativa a documentar no README
@@ -435,7 +437,7 @@ Explicitar que, em um cenário de produção real, o ideal seria usar **Amazon M
 
 ### 8.3 Ordem de implantação
 
-1. RDS Postgres free tier
+1. RDS Postgres
 2. EC2 com a aplicação Spring Boot (via Docker)
 3. Kafka + Zookeeper (ou modo KRaft, sem Zookeeper) em container na mesma EC2 ou em uma instância adicional
 4. Variáveis de ambiente / secrets via `.env` ou AWS Systems Manager Parameter Store
@@ -490,7 +492,7 @@ payment-gateway-sandbox/
 | v2 | Webhook publica em Kafka, consumer processa de forma assíncrona | Provar mensageria e desacoplamento |
 | v3 | Outbox pattern + idempotência refinada no consumer | Provar maturidade em sistemas distribuídos |
 | v4 | `FakePaymentProvider` + teste de carga completo (k6) documentado no README com resultados e limitações | Provar preocupação com performance e rigor no que se mede |
-| v5 | Deploy AWS free tier (EC2 + RDS + Kafka em container) | Provar capacidade de subir e operar em nuvem |
+| v5 | Deploy AWS (EC2 + RDS + Kafka em container) | Provar capacidade de subir e operar em nuvem |
 | v6 (opcional) | Segundo provider brasileiro (Mercado Pago, Asaas ou Pix) e/ou split de pagamento / recorrência | Provar a abstração de provider e expandir domínio de negócio |
 
 ---
@@ -565,7 +567,7 @@ Em `POST /api/v1/payments`, preencher o header `Idempotency-Key` com qualquer st
 | `PaymentEvent` gravado a cada mudança de estado (`PENDING_PUBLISH`) | ✅ |
 | Swagger / OpenAPI | ✅ |
 | Interface `PaymentProvider` + config de seleção (`payment.provider`) | ✅ (`application/port`, `PaymentProviderConfig`; `PaymentService` usa a porta em create, cancel e refund) |
-| `StripePaymentProvider` (`PaymentIntent`, `Refund`) | ✅ (Idempotency-Key no create, circuit breaker Resilience4j, recusa de cartão vira `FAILED`; teste unitário com mock; ainda não validado contra o sandbox real) |
+| `StripePaymentProvider` (`PaymentIntent`, `Refund`) | ✅ (Idempotency-Key no create, circuit breaker Resilience4j, recusa de cartão vira `FAILED`; teste unitário com mock; validado contra o sandbox real do Stripe: criação, replay, 409/400 e estorno parcial; webhook ainda não) |
 | `FakePaymentProvider` + profile `loadtest` | ✅ (aprovação já nasce `CAPTURED`; latência e `failure-rate` configuráveis; teste unitário) |
 | 4.7 Webhook Stripe + `ProcessedWebhookEvent` | ⏳ (tabela criada, sem código) |
 | Kafka (producer, consumer, poller do outbox) | ⏳ |

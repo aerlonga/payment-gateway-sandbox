@@ -12,6 +12,7 @@ Contexto de cada entrega (o que mudou, por que, como validar, pendencias). Use [
 | [005](005-idempotencia-concorrente.md) | Idempotencia sob concorrencia | fix | implementado |
 | [006](006-client-secret-e-campos-do-request.md) | `clientSecret` na resposta e `paymentMethod`/`description` no request | feature | implementado |
 | [007](007-teste-integracao-controller.md) | Teste de integracao do controller (contexto completo + Postgres) | chore | implementado |
+| [009](009-readme-free-tier-e-status-stripe.md) | README: free tier AWS e status do Stripe | chore | implementado |
 
 ## Planejado (ainda sem documento de feature)
 
