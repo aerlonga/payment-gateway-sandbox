@@ -224,6 +224,15 @@ public class PaymentService {
         return paymentMapper.toResponse(payment);
     }
 
+    /**
+     * Aplica o status informado pelo provider (webhook) pela maquina de estados. Deve rodar
+     * dentro de uma transacao do chamador; lanca InvalidPaymentStateException se a transicao
+     * for invalida.
+     */
+    public Payment applyProviderStatus(Payment payment, PaymentStatus newStatus, Map<String, Object> extra) {
+        return transition(payment, newStatus, null, extra);
+    }
+
     private Payment transition(Payment payment, PaymentStatus newStatus, String providerPaymentId,
             Map<String, Object> extraPayload) {
         PaymentStatus current = payment.getStatus();
