@@ -3,7 +3,7 @@
 ## Status
 
 - Tipo: feature
-- Status: implementado (validacao manual com Stripe CLI pendente do dono)
+- Status: implementado e validado manualmente com Stripe CLI (2026-11-16)
 - Ultima atualizacao: 2026-11-16
 
 ## Objetivo
@@ -47,15 +47,16 @@ Manual (dono, com Stripe CLI logado e `.env` local preenchido; o agente nao le o
 
 ```bash
 docker compose up -d --build app
-stripe listen --forward-to localhost:8080/api/v1/webhooks/stripe   # o segredo impresso vai direto para o .env
-stripe trigger payment_intent.succeeded
+stripe listen --events payment_intent.succeeded,payment_intent.payment_failed,payment_intent.canceled \
+  --forward-to localhost:8080/api/v1/webhooks/stripe   # o segredo impresso vai direto para o .env
 ```
 
-O `payment_intent` do `trigger` nao existe no banco: o esperado e ir para a DLT. Para ver a transicao real, crie um pagamento pela API com `STRIPE_TEST_PAYMENT_METHOD` vazio, confirme-o pelo Stripe CLI e confira `GET /api/v1/payments/{id}/history` (evento com `source=stripe_webhook`).
+O `stripe listen` exige `--events` (ou `--all-snapshot`). O `stripe trigger payment_intent.succeeded` falha na API atual da conta (`payment_method_types` nao e mais suportado), entao nao serve para o teste.
+
+Fluxo validado: crie um pagamento pela API com `STRIPE_TEST_PAYMENT_METHOD` vazio (fica `PENDING`), confirme-o com `stripe payment_intents confirm <pi_...> --payment-method pm_card_visa` e confira `GET /api/v1/payments/{id}` (`CAPTURED`) e `/history` (evento com `source=stripe_webhook`). Idempotencia: `stripe events resend <evt_...>` responde `200` e nao gera evento novo.
 
 ## Pendencias
 
-- Validacao manual com `stripe listen` (acima).
 - `charge.refunded` (estorno feito fora da API): plano em `docs/superpowers/plans/2026-11-16-pendencia-webhook-charge-refunded.md`.
 - Reconciliacao de `PENDING` antigos; outbox/poller de `payment_events` (v3); k6 do webhook (cenario 3).
 - Dono: ativar Secret scanning e Push protection no GitHub.
