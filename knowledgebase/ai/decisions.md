@@ -74,3 +74,16 @@
   - `paymentMethod` (tipo, ex.: `card`) e `description` passaram a fazer parte do payload comparado na idempotencia (mesma chave com valor diferente = 409) e sao gravados em `payments` (V5).
   - Com `paymentMethod` explicito o Stripe recebe `payment_method_types` em vez de `automatic_payment_methods` (sao excludentes).
 
+
+## ADR-010 — Webhook Stripe assincrono: assina, enfileira no Kafka, consumer idempotente (2026-11-16)
+
+- **Decisao:** `POST /api/v1/webhooks/stripe` so valida a assinatura (`Stripe-Signature`, HMAC-SHA256, tolerancia 300 s), converte o evento num `ProviderEvent` neutro e publica no topico `payment.webhook-events` (chave = `providerPaymentId`), respondendo `200` sem processar. O `WebhookEventListener` consome e o `WebhookEventProcessor` grava o `stripe_event_id` em `processed_webhook_events` e aplica a transicao pela maquina de estados do `PaymentService`, tudo na mesma transacao.
+- **Eventos tratados:** `payment_intent.succeeded` -> `CAPTURED`, `payment_intent.payment_failed` -> `FAILED`, `payment_intent.canceled` -> `CANCELED`. Os demais tipos respondem `200` e sao ignorados. **`charge.refunded` fica de fora**: o evento traz o total acumulado, e somar estorno feito pela API com estorno feito no dashboard exige reconciliar `refunded_amount` (pendencia registrada em `docs/superpowers/plans/2026-11-16-pendencia-webhook-charge-refunded.md`).
+- **Dedupe no consumer, nao no controller:** o `UNIQUE` de `stripe_event_id` decide a corrida; a violacao e tratada fora da transacao (ela aborta a tx no Postgres) e vira "duplicado, descartado". Evento fora de ordem (transicao invalida) e descartado com `warn` e marcado como processado, sem retry.
+- **Retry e DLT:** webhook que chega antes do commit do pagamento (`PaymentNotFoundException`) desfaz o registro de processado e sobe para o Kafka: 5 tentativas com 1 s e depois `payment.webhook-events.DLT` (destino explicito: o default do spring-kafka 4 seria `-dlt`). O consumer segue vivo.
+- **Sem segredo, sem endpoint:** com `STRIPE_WEBHOOK_SECRET` vazio, controller e verifier nao sao registrados (404); nunca aceita evento sem assinatura. Corpo, header e segredo nunca vao para log.
+- **Motivo:** o Stripe tem timeout curto e reenvia; responder rapido e desacoplar o processamento evita estourar o timeout e permite retry/DLT. Ordem por pagamento vem da chave da particao.
+- **Consequencias:**
+  - O pom usa `spring-boot-starter-kafka` (Boot 4 moveu a autoconfig do Kafka para `spring-boot-kafka`); isso tambem corrigiu o `contextLoads` com Kafka.
+  - Entrega at-least-once; o processor e idempotente. O outbox de `payment_events` (v3) continua pendente.
+  - `PENDING` antigo sem webhook (timeout do ADR-006) ainda nao tem reconciliacao ativa.
