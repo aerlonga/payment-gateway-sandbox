@@ -7,6 +7,8 @@ spring:
     password: ${DB_PASSWORD:postgres}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      auto-offset-reset: earliest   # grupo novo le o topico desde o inicio (nao perde evento publicado antes do assign)
   jpa:
     hibernate:
       ddl-auto: validate
@@ -26,3 +28,4 @@ payment:
     connect-timeout-ms: 5000
     read-timeout-ms: 10000
     max-network-retries: 2
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}   # vazio = endpoint de webhook nao e registrado

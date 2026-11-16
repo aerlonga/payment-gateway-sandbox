@@ -10,6 +10,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param connectTimeoutMs timeout de conexao com a API do Stripe
  * @param readTimeoutMs    timeout de leitura
  * @param maxNetworkRetries retries do SDK em falha de rede (seguros: o create usa Idempotency-Key)
+ * @param webhookSecret    segredo de assinatura dos webhooks, vem de STRIPE_WEBHOOK_SECRET; vazio
+ *                         desativa o endpoint de webhook
  */
 @ConfigurationProperties(prefix = "payment.stripe")
 public record StripeProperties(
@@ -17,5 +19,6 @@ public record StripeProperties(
         String paymentMethod,
         int connectTimeoutMs,
         int readTimeoutMs,
-        int maxNetworkRetries) {
+        int maxNetworkRetries,
+        String webhookSecret) {
 }

@@ -11,7 +11,9 @@ Cliente (Swagger/Postman/k6)
   <- 201 (criado) | 200 (replay idempotente)
 ```
 
-Planejado (v2/v3, ainda nao existe): webhook do Stripe -> publica no Kafka -> consumer atualiza o status; poller le `payment_events` `PENDING_PUBLISH` e publica no Kafka (outbox). Ver ADR-006.
+Webhook (v2, implementado): `POST /api/v1/webhooks/stripe` valida a assinatura -> publica `ProviderEvent` em `payment.webhook-events` -> `WebhookEventListener` -> `WebhookEventProcessor` (dedupe em `processed_webhook_events` + transicao pela maquina de estados), com retry e `payment.webhook-events.DLT`. Ver ADR-010.
+
+Planejado (v3, ainda nao existe): poller le `payment_events` `PENDING_PUBLISH` e publica no Kafka (outbox). Ver ADR-006.
 
 ## Codigo da aplicacao
 
@@ -65,7 +67,7 @@ Transicoes validadas em `PaymentService.ALLOWED_TRANSITIONS`. `FAILED`, `REFUNDE
 |---|---|
 | `payments` | `id`, `customer_id` (referencia solta, sem tabela de cliente), `amount` (centavos), `currency`, `status`, `provider` ("fake"/"stripe"), `provider_payment_id`, `payment_method` e `description` (opcionais, do request), `refunded_amount`, `idempotency_key` (`UNIQUE`), timestamps. `CHECK (0 <= refunded_amount <= amount)` |
 | `payment_events` | auditoria + outbox: `event_type` (`payment.created/authorized/confirmed/failed/canceled/refunded`), `payload` JSONB, `status` (`PENDING_PUBLISH`/`PUBLISHED`/`FAILED`) |
-| `processed_webhook_events` | idempotencia do webhook (`stripe_event_id` `UNIQUE`); tabela criada, **sem codigo ainda** |
+| `processed_webhook_events` | idempotencia do webhook (`stripe_event_id` `UNIQUE`); gravada pelo `WebhookEventProcessor` na mesma transacao da transicao (ADR-010) |
 
 Indice `(customer_id, status)` em `payments` para a listagem.
 

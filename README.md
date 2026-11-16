@@ -266,7 +266,7 @@ Retorna a lista de eventos (`PaymentEvent`) daquela cobrança — auditoria de m
 
 ---
 
-### 4.7 `POST /api/webhooks/stripe`
+### 4.7 `POST /api/v1/webhooks/stripe`
 
 Endpoint que o Stripe chama. **Não é para ser chamado manualmente pelo cliente da API.**
 
@@ -567,11 +567,11 @@ Em `POST /api/v1/payments`, preencher o header `Idempotency-Key` com qualquer st
 | `PaymentEvent` gravado a cada mudança de estado (`PENDING_PUBLISH`) | ✅ |
 | Swagger / OpenAPI | ✅ |
 | Interface `PaymentProvider` + config de seleção (`payment.provider`) | ✅ (`application/port`, `PaymentProviderConfig`; `PaymentService` usa a porta em create, cancel e refund) |
-| `StripePaymentProvider` (`PaymentIntent`, `Refund`) | ✅ (Idempotency-Key no create, circuit breaker Resilience4j, recusa de cartão vira `FAILED`; teste unitário com mock; validado contra o sandbox real do Stripe: criação, replay, 409/400 e estorno parcial; webhook ainda não) |
+| `StripePaymentProvider` (`PaymentIntent`, `Refund`) | ✅ (Idempotency-Key no create, circuit breaker Resilience4j, recusa de cartão vira `FAILED`; teste unitário com mock; validado contra o sandbox real do Stripe: criação, replay, 409/400 e estorno parcial; o webhook ainda não foi validado contra o Stripe real) |
 | `FakePaymentProvider` + profile `loadtest` | ✅ (aprovação já nasce `CAPTURED`; latência e `failure-rate` configuráveis; teste unitário) |
-| 4.7 Webhook Stripe + `ProcessedWebhookEvent` | ⏳ (tabela criada, sem código) |
-| Kafka (producer, consumer, poller do outbox) | ⏳ |
+| 4.7 Webhook Stripe + `ProcessedWebhookEvent` | ✅ (assinatura HMAC, publica em `payment.webhook-events`, consumer idempotente com retry e DLT; `payment_intent.succeeded/payment_failed/canceled`; `charge.refunded` fora; validação manual com Stripe CLI pendente) |
+| Kafka (producer, consumer, poller do outbox) | ✅ parcial: producer e consumer do webhook; poller do outbox ⏳ |
 | Resilience4j | ✅ parcial: circuit breaker (config default) no Stripe; sem retry/time limiter próprios (o SDK faz retry de rede) |
-| Testes automatizados | ✅ unitários (service, providers), contrato do controller (MockMvc) e integração do controller + corrida de idempotência (Postgres via Testcontainers); `contextLoads` com Kafka ainda falha |
+| Testes automatizados | ✅ unitários (service, providers), contrato do controller (MockMvc) e integração do controller + corrida de idempotência (Postgres via Testcontainers) + fluxo webhook→Kafka→consumer (Postgres e Kafka reais); `contextLoads` com Kafka passa |
 | Teste de carga k6 | ⏳ |
 | Deploy AWS | ⏳ |

@@ -28,6 +28,11 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     Optional<Payment> findByProviderPaymentId(String providerPaymentId);
 
+    /** Lock de escrita para o consumer de webhook: serializa eventos do mesmo pagamento. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Payment p where p.providerPaymentId = :providerPaymentId")
+    Optional<Payment> findByProviderPaymentIdForUpdate(@Param("providerPaymentId") String providerPaymentId);
+
     Page<Payment> findByCustomerId(UUID customerId, Pageable pageable);
 
     Page<Payment> findByCustomerIdAndStatus(UUID customerId, PaymentStatus status, Pageable pageable);

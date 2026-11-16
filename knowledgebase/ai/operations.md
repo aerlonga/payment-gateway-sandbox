@@ -39,6 +39,10 @@ Editar `PAYMENT_PROVIDER` no `.env` e recriar a app (`docker compose up -d --bui
 - Commits em portugues, sem acento, prefixo convencional (`feat:`, `fix:`, `docs:`), **sem `Co-Authored-By`** (ADR-008).
 - Nao usar `--force` em branch compartilhada; reescrever so branch propria, recem-criada e sem PR, e avisar.
 
+## Webhook do Stripe
+
+Com `STRIPE_WEBHOOK_SECRET` no `.env` (vazio = endpoint desligado, 404), suba a app e rode `stripe listen --forward-to localhost:8080/api/v1/webhooks/stripe`; o segredo impresso vai direto para o `.env` (nao colar em chat, issue ou doc). Eventos que nao achar pagamento vao para `payment.webhook-events.DLT` depois de 5 tentativas. Detalhes em `knowledgebase/features/010-webhook-stripe.md`.
+
 ## Deploy (alvo, v5)
 
 AWS free tier: RDS Postgres + EC2 com a app e o Kafka em container (MSK fora por custo — decisao consciente a documentar). Na instancia de deploy `payment.provider=stripe`; o profile `loadtest` so nas execucoes do k6. Ainda nao implementado.

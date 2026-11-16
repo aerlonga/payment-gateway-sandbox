@@ -40,7 +40,7 @@ Postgres e Kafka em container = infra descartavel, com versao fixa, igual em qua
 - Dois listeners: `PLAINTEXT://kafka:29092` (entre containers) e `EXTERNAL://localhost:9092` (do host).
 - `CLUSTER_ID`, `NODE_ID`, `QUORUM_VOTERS` etc. nao sao credenciais: sao identidade e topologia.
 - Tudo em `PLAINTEXT`: sem autenticacao nem criptografia. Ok pra sandbox. Em producao seria `SASL_SSL`, com credenciais no secret manager.
-- A app ainda nao usa Kafka. So existem o enum `EventPublishStatus` (`PENDING_PUBLISH`) e a entidade `PaymentEvent`, preparando um outbox. Falta o publisher.
+- A app usa Kafka no webhook do Stripe (topico `payment.webhook-events`, ADR-010). O outbox de `payment_events` (`PENDING_PUBLISH`) ainda nao tem poller.
 - Credenciais reais do projeto: `DB_USER`/`DB_PASSWORD` no `.env`. Chave da Stripe tambem iria la.
 
 ## Como testar pelo Swagger
@@ -84,7 +84,7 @@ PENDING ──► AUTHORIZED ──► CAPTURED ──► REFUNDED
 
 - Todo pagamento novo nasce `PENDING` (`PaymentMapper.toEntity`).
 - `FAILED`, `REFUNDED` e `CANCELED` sao finais.
-- Nao existe endpoint pra ir de `PENDING` a `AUTHORIZED`/`CAPTURED`: isso viria do Stripe via webhook, que ainda nao existe.
+- Nao existe endpoint pra ir de `PENDING` a `AUTHORIZED`/`CAPTURED`: isso vem do Stripe via webhook (`POST /api/v1/webhooks/stripe`). Pra testar: `STRIPE_WEBHOOK_SECRET` no `.env`, `stripe listen --forward-to localhost:8080/api/v1/webhooks/stripe` (o segredo impresso vai pro `.env`), crie um pagamento com `STRIPE_TEST_PAYMENT_METHOD` vazio e confirme-o pelo Stripe CLI; confira em `/history` o evento com `source=stripe_webhook`.
 - `refund` so e aceito em `CAPTURED`. Pra testar pela API, force o status:
   ```bash
   docker exec -it payment-gateway-postgres psql -U postgres -d payment_gateway \
