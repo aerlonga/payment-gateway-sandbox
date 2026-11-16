@@ -12,6 +12,7 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 
@@ -107,6 +108,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiErrorResponse> handleUnreadable(HttpMessageNotReadableException ex, WebRequest request) {
         return build(HttpStatus.BAD_REQUEST, "Corpo da requisicao invalido ou mal formado", request);
+    }
+
+    /** Rota inexistente (ex.: webhook desligado sem segredo) e 404, nao erro interno. */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleNoResource(NoResourceFoundException ex, WebRequest request) {
+        return build(HttpStatus.NOT_FOUND, "Recurso nao encontrado", request);
     }
 
     @ExceptionHandler(Exception.class)

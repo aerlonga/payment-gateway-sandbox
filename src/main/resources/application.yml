@@ -7,6 +7,8 @@ spring:
     password: ${DB_PASSWORD:postgres}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      auto-offset-reset: earliest   # grupo novo le o topico desde o inicio (nao perde evento publicado antes do assign)
   jpa:
     hibernate:
       ddl-auto: validate
