@@ -26,3 +26,4 @@ payment:
     connect-timeout-ms: 5000
     read-timeout-ms: 10000
     max-network-retries: 2
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}   # vazio = endpoint de webhook nao e registrado

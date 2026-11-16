@@ -24,6 +24,7 @@
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` fora do Docker; `kafka:29092` no compose |
 | `PAYMENT_PROVIDER` | `fake` (default) ou `stripe` |
 | `STRIPE_API_KEY` | chave **secreta** do sandbox (`sk_test_...`); obrigatoria com `PAYMENT_PROVIDER=stripe` (a app nao sobe sem ela). Nunca a publicavel. |
+| `STRIPE_WEBHOOK_SECRET` | segredo de assinatura dos webhooks (impresso pelo `stripe listen`, ou do endpoint no painel do sandbox). Vazio = `POST /api/v1/webhooks/stripe` nao e registrado (404). So em `.env`; nunca em codigo, log ou doc |
 | `STRIPE_TEST_PAYMENT_METHOD` | opcional, ex.: `pm_card_visa`: confirma e captura na criacao; vazio deixa o pagamento `PENDING` |
 | `FAKE_LATENCY_MS_MIN` / `FAKE_LATENCY_MS_MAX` / `FAKE_FAILURE_RATE` | fake provider (defaults 0/0/0); `application-loadtest.yml` usa 200/400/0.02 |
 | `payment.stripe.connect-timeout-ms` / `read-timeout-ms` / `max-network-retries` | 5000 / 10000 / 2 (so em `application.yml`) |

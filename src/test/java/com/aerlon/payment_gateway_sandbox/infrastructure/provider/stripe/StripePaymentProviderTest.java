@@ -48,7 +48,7 @@ class StripePaymentProviderTest {
     }
 
     private StripePaymentProvider provider(String paymentMethod) {
-        return new StripePaymentProvider(client, new StripeProperties("sk_test_x", paymentMethod, 1000, 1000, 0),
+        return new StripePaymentProvider(client, new StripeProperties("sk_test_x", paymentMethod, 1000, 1000, 0, ""),
                 PaymentProviderConfig.stripeCircuitBreaker());
     }
 
@@ -131,7 +131,7 @@ class StripePaymentProviderTest {
                 .thenThrow(new CardException("recusado", "req_1", "card_declined", null, "card_declined", null, 402, null));
         var breaker = PaymentProviderConfig.stripeCircuitBreaker();
         var provider = new StripePaymentProvider(client,
-                new StripeProperties("sk_test_x", "", 1000, 1000, 0), breaker);
+                new StripeProperties("sk_test_x", "", 1000, 1000, 0, ""), breaker);
 
         assertThat(provider.createPayment(COMMAND).status()).isEqualTo(PaymentStatus.FAILED);
         assertThat(breaker.getMetrics().getNumberOfFailedCalls()).isZero();

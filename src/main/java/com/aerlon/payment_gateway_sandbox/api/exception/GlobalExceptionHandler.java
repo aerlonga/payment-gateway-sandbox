@@ -19,6 +19,7 @@ import com.aerlon.payment_gateway_sandbox.api.dto.ApiErrorResponse;
 import com.aerlon.payment_gateway_sandbox.domain.exception.IdempotencyConflictException;
 import com.aerlon.payment_gateway_sandbox.domain.exception.InvalidPaymentStateException;
 import com.aerlon.payment_gateway_sandbox.domain.exception.InvalidRefundException;
+import com.aerlon.payment_gateway_sandbox.domain.exception.InvalidWebhookSignatureException;
 import com.aerlon.payment_gateway_sandbox.domain.exception.PaymentNotFoundException;
 import com.aerlon.payment_gateway_sandbox.domain.exception.PaymentProviderException;
 
@@ -40,6 +41,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(InvalidRefundException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidRefund(InvalidRefundException ex, WebRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(InvalidWebhookSignatureException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidWebhookSignature(InvalidWebhookSignatureException ex,
+            WebRequest request) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
     }
 
